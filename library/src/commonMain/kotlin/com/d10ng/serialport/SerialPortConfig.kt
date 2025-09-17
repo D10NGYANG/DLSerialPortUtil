@@ -1,8 +1,6 @@
 package com.d10ng.serialport
 
 data class SerialPortConfig(
-    // 串口路径
-    var path: String = "",
     // 波特率
     var baudRate: BaudRate = BaudRate.V115200,
     // 数据位
