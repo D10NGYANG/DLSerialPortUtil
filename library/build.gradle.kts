@@ -13,10 +13,9 @@ group = "com.github.D10NGYANG"
 version = "0.1.0"
 
 kotlin {
-    jvmToolchain(8)
     androidTarget {
         compilerOptions {
-            jvmTarget = JvmTarget.JVM_11
+            jvmTarget = JvmTarget.JVM_1_8
         }
         publishLibraryVariants("release")
     }
@@ -43,9 +42,9 @@ kotlin {
             // APP通用工具
             implementation(libs.dl.app)
             // 机内串口通讯
-            api("com.licheedev:android-serialport:2.1.5")
+            api(libs.serialport.android)
             // USB串口通讯
-            api("com.github.mik3y:usb-serial-for-android:3.9.0")
+            api(libs.serialport.android.usb)
         }
     }
 }
