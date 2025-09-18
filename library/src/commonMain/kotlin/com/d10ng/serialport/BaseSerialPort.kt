@@ -15,7 +15,7 @@ abstract class BaseSerialPort(
     /**
      * 输出数据流
      */
-    val outputDataFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 2048)
+    val outputDataFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = Int.MAX_VALUE)
 
     /**
      * 串口是否处于开启状态
