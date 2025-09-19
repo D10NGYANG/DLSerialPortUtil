@@ -83,7 +83,7 @@ class AndroidSerialPort(
         }
     }
 
-    override fun write(data: ByteArray): Boolean {
+    override suspend fun write(data: ByteArray): Boolean {
         return runCatching {
             sp!!.outputStream.use { os ->
                 os.write(data)

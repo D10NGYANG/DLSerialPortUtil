@@ -32,7 +32,7 @@ abstract class BaseSerialPort(
      * @param data ByteArray 数据
      * @return Boolean 是否成功
      */
-    abstract fun write(data: ByteArray): Boolean
+    abstract suspend fun write(data: ByteArray): Boolean
 
     /**
      * 关闭串口

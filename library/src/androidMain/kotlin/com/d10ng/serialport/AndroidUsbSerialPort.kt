@@ -102,7 +102,7 @@ class AndroidUsbSerialPort(
         }
     }
 
-    override fun write(data: ByteArray): Boolean {
+    override suspend fun write(data: ByteArray): Boolean {
         return runCatching {
             sp!!.write(data, WRITE_WAIT_MILLIS)
             true

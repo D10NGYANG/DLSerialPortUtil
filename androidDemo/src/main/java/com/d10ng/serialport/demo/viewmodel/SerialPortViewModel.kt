@@ -7,6 +7,7 @@ import com.d10ng.serialport.AndroidUsbSerialPortManager
 import com.d10ng.serialport.BaseSerialPort
 import com.d10ng.serialport.SerialPortConfig
 import com.d10ng.serialport.SerialPortInfo
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -197,7 +198,7 @@ class SerialPortViewModel : ViewModel() {
             return
         }
         
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             try {
                 val data = "${message}\r\n".toByteArray(Charsets.UTF_8)
                 val success = port.write(data)
