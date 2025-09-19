@@ -30,8 +30,6 @@ kotlin {
         commonMain.dependencies {
             // 协程
             implementation(libs.kotlinx.coroutines)
-            // 通用计算库
-            implementation(libs.dl.common)
         }
         androidMain.dependencies {
             implementation(libs.androidx.core.ktx)
@@ -39,8 +37,6 @@ kotlin {
             implementation(libs.androidx.startup.runtime)
             // 协程 Android
             implementation(libs.kotlinx.coroutines.android)
-            // APP通用工具
-            implementation(libs.dl.app)
             // 机内串口通讯
             api(libs.serialport.android)
             // USB串口通讯
