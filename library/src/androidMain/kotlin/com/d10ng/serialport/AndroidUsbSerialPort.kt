@@ -2,6 +2,7 @@ package com.d10ng.serialport
 
 import android.app.PendingIntent
 import android.content.Intent
+import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -9,6 +10,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -31,9 +34,17 @@ class AndroidUsbSerialPort(
     private var sp: UsbSerialPort? = null
     private var readJob: Job? = null
 
+    init {
+        scope.launch {
+            StartupInitializer.usbDeviceDetachedFlow.filter { it == info.id }.collect {
+                close()
+            }
+        }
+    }
+
     override suspend fun open() {
         if (sp != null) return
-        val driver = info.obj as UsbSerialPort
+        val driver = info.obj as UsbSerialDriver
         // 检查权限
         if (!usbManager.hasPermission(driver.device)) {
             withContext(Dispatchers.Main) {
@@ -50,13 +61,58 @@ class AndroidUsbSerialPort(
                 throw Exception("connect fail: permission denied")
             }
         }
+        runCatching {
+            // 打开设备
+            val connection = usbManager.openDevice(driver.device)
+            if (connection == null) throw Exception("connect fail: open device fail")
+            // 打开串口
+            val port = driver.ports[0] // 大多数设备只有一个端口
+            port.open(connection)
+            // 设置参数
+            port.setParameters(
+                config.baudRate.intValue, // 波特率
+                config.dataBits.intValue, // 数据位
+                config.stopBits.intValue, // 停止位
+                config.parity.intValue    // 校验位
+            )
+            sp = port
+            startRead()
+            openStateFlow.value = true
+        }.onFailure { exception ->
+            sp = null
+            throw exception
+        }
+    }
+
+    private fun startRead() {
+        // 启动读取线程
+        readJob = scope.launch {
+            loop@ while (isActive && sp != null) {
+                runCatching {
+                    val size = sp!!.read(buffer, buffer.size, READ_WAIT_MILLIS)
+                    if (size > 0) {
+                        outputDataFlow.tryEmit(buffer.copyOfRange(0, size))
+                    } else if (size == -1) {
+                        break@loop
+                    }
+                }.onFailure { break@loop }
+            }
+            close()
+        }
     }
 
     override fun write(data: ByteArray): Boolean {
-        TODO("Not yet implemented")
+        return runCatching {
+            sp!!.write(data, WRITE_WAIT_MILLIS)
+            true
+        }.getOrDefault(false)
     }
 
     override fun close() {
-        TODO("Not yet implemented")
+        runCatching { readJob?.cancel() }
+        runCatching { sp?.close() }
+        readJob = null
+        sp = null
+        openStateFlow.value = false
     }
 }

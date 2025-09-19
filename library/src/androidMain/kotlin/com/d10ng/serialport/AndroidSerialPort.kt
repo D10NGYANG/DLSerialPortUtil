@@ -77,7 +77,7 @@ class AndroidSerialPort(
                     } else if (size == -1) {
                         break@loop
                     }
-                }
+                }.onFailure { break@loop }
             }
             close()
         }
