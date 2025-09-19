@@ -7,7 +7,7 @@ import java.io.File
  * @Author d10ng
  * @Date 2025/9/18 17:23
  */
-object AndroidSerialPortManager: ISerialPortManager<AndroidSerialPort> {
+object AndroidSerialPortManager: ISerialPortManager {
     override suspend fun listPorts(): List<SerialPortInfo> {
         val devDir = File("/dev/")
         if (!devDir.exists() || !devDir.isDirectory) {
