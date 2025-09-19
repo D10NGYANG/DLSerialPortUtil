@@ -66,6 +66,10 @@ dependencies {
 
     // lifecycle
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+
+    // navigation
+    implementation(libs.androidx.navigation.compose)
 
     // serialport
     implementation(project(":library"))
