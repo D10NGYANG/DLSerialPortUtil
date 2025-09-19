@@ -18,7 +18,7 @@ import kotlin.js.Promise
 class WebSerialPort(
     info: SerialPortInfo,
     config: SerialPortConfig
-): BaseSerialPort(info, config)  {
+): BaseSerialPort(info, config) {
     
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var sp: dynamic = null
