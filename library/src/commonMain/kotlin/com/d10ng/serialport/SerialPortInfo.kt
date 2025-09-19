@@ -8,5 +8,6 @@ package com.d10ng.serialport
 data class SerialPortInfo(
     // 平台唯一标识（例如 Linux 下是 /dev/ttyS0，Android 下是 USB Device ID）
     val id: String,
-    val description: String? = null
+    val description: String? = null,
+    val obj: Any? = null
 )

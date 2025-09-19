@@ -53,6 +53,8 @@ android {
     namespace = "com.d10ng.serialport"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
+    sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
+
     defaultConfig {
         minSdk = libs.versions.android.minSdk.get().toInt()
     }

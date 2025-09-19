@@ -25,7 +25,7 @@ abstract class BaseSerialPort(
     /**
      * 打开串口
      */
-    abstract fun open()
+    abstract suspend fun open()
 
     /**
      * 写数据

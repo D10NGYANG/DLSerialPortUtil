@@ -5,7 +5,7 @@ package com.d10ng.serialport
  * @Author d10ng
  * @Date 2025/9/17 11:23
  */
-interface ISerialPortManager {
+interface ISerialPortManager<T : BaseSerialPort> {
 
     /**
      * 获取串口列表
@@ -18,5 +18,5 @@ interface ISerialPortManager {
      * @param config 串口配置
      * @return BaseSerialPort
      */
-    suspend fun <T : BaseSerialPort> open(portInfo: SerialPortInfo, config: SerialPortConfig): T
+    suspend fun open(portInfo: SerialPortInfo, config: SerialPortConfig): T
 }

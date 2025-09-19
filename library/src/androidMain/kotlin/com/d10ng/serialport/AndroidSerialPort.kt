@@ -28,7 +28,7 @@ class AndroidSerialPort(
     // 循环读取数据任务
     private var readJob: Job? = null
 
-    override fun open() {
+    override suspend fun open() {
         if (sp != null) return
         val file = File(info.id)
         // 提权
