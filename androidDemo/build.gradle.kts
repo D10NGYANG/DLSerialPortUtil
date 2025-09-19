@@ -67,4 +67,6 @@ dependencies {
     // lifecycle
     implementation(libs.androidx.lifecycle.runtime.ktx)
 
+    // serialport
+    implementation(project(":library"))
 }

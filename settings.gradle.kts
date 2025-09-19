@@ -30,6 +30,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "DLSerialPortUtil"
-include(":app")
+include(":androidDemo")
 include(":library")
  
