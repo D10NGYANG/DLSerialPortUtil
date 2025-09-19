@@ -199,7 +199,7 @@ class SerialPortViewModel : ViewModel() {
         
         viewModelScope.launch {
             try {
-                val data = message.toByteArray(Charsets.UTF_8)
+                val data = "${message}\r\n".toByteArray(Charsets.UTF_8)
                 val success = port.write(data)
                 if (success) {
                     addMessage("发送", message, MessageType.SENT)

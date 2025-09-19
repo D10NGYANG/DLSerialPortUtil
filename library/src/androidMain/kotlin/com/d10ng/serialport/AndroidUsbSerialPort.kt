@@ -2,6 +2,7 @@ package com.d10ng.serialport
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.Build
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
 import kotlinx.coroutines.CoroutineScope
@@ -53,7 +54,7 @@ class AndroidUsbSerialPort(
                         ctx,
                         0,
                         Intent(ACTION_USB_PERMISSION),
-                        PendingIntent.FLAG_IMMUTABLE
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_MUTABLE else 0
                     )
                 )
             }

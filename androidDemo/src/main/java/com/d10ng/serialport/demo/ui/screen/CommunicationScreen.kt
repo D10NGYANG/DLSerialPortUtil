@@ -41,7 +41,7 @@ fun CommunicationScreen(
 ) {
     val messages by viewModel.messages.collectAsState()
     val isConnected by viewModel.isConnected.collectAsState()
-    var inputText by remember { mutableStateOf("") }
+    var inputText by remember { mutableStateOf("\$CCICR,0,00*68") }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -89,7 +89,7 @@ fun CommunicationScreen(
         },
         bottomBar = {
             Surface(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
                 shadowElevation = 8.dp
             ) {
                 Row(
@@ -196,7 +196,6 @@ fun CommunicationScreen(
 
 @Composable
 private fun MessageItem(message: ChatMessage) {
-    val dateFormat = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
     
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -263,7 +262,7 @@ private fun MessageItem(message: ChatMessage) {
                 
                 // 时间戳
                 Text(
-                    text = dateFormat.format(message.timestamp),
+                    text = message.timestamp,
                     style = MaterialTheme.typography.labelSmall,
                     color = when (message.type) {
                         MessageType.SENT -> MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
