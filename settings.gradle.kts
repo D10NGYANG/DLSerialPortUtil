@@ -12,7 +12,7 @@ pluginManagement {
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
     repositories {
         maven("https://jitpack.io") {
             mavenContent {
@@ -31,5 +31,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "DLSerialPortUtil"
 include(":androidDemo")
+include(":jsDemo")
 include(":library")
  

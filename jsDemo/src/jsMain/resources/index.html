@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>串口通讯测试 - Web版</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 1200px;
+            height: 80vh;
+            min-height: 600px;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .config-panel {
+            width: 350px;
+            background: #f8f9fa;
+            border-right: 1px solid #e9ecef;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .communication-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 24px;
+        }
+
+        .panel-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .form-control {
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #5a6fd8;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #c0392b;
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #5a6268;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .status-connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-dot.connected {
+            background: #28a745;
+        }
+
+        .status-dot.disconnected {
+            background: #dc3545;
+        }
+
+        .messages-container {
+            flex: 1;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 16px;
+            overflow-y: auto;
+            background: #fafafa;
+            margin-bottom: 16px;
+        }
+
+        .message {
+            margin-bottom: 12px;
+            padding: 12px;
+            border-radius: 8px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+
+        .message-sent {
+            background: #667eea;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+
+        .message-received {
+            background: white;
+            color: #2c3e50;
+            border: 1px solid #e9ecef;
+        }
+
+        .message-system {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            text-align: center;
+            margin: 0 auto;
+        }
+
+        .message-header {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-bottom: 4px;
+        }
+
+        .message-content {
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .input-area input {
+            flex: 1;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                height: 100vh;
+            }
+            
+            .config-panel {
+                width: 100%;
+                max-height: 300px;
+                overflow-y: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 配置面板 -->
+        <div class="config-panel">
+            <h2 class="panel-title">串口配置</h2>
+            
+            <!-- 连接状态 -->
+            <div id="connectionStatus" class="status-indicator status-disconnected">
+                <div class="status-dot disconnected"></div>
+                <span>未连接</span>
+            </div>
+            
+            <!-- 串口选择 -->
+            <div class="form-group">
+                <label class="form-label">串口设备</label>
+                <button id="selectPortBtn" class="btn btn-secondary">选择串口设备</button>
+                <div id="selectedPort" style="font-size: 12px; color: #6c757d; margin-top: 4px;">
+                    未选择设备
+                </div>
+            </div>
+            
+            <!-- 波特率 -->
+            <div class="form-group">
+                <label class="form-label">波特率</label>
+                <select id="baudRate" class="form-control">
+                    <option value="9600">9600</option>
+                    <option value="19200">19200</option>
+                    <option value="38400">38400</option>
+                    <option value="57600">57600</option>
+                    <option value="115200" selected>115200</option>
+                </select>
+            </div>
+            
+            <!-- 数据位 -->
+            <div class="form-group">
+                <label class="form-label">数据位</label>
+                <select id="dataBits" class="form-control">
+                    <option value="7">7</option>
+                    <option value="8" selected>8</option>
+                </select>
+            </div>
+            
+            <!-- 校验位 -->
+            <div class="form-group">
+                <label class="form-label">校验位</label>
+                <select id="parity" class="form-control">
+                    <option value="none" selected>无校验</option>
+                    <option value="even">偶校验</option>
+                    <option value="odd">奇校验</option>
+                </select>
+            </div>
+            
+            <!-- 停止位 -->
+            <div class="form-group">
+                <label class="form-label">停止位</label>
+                <select id="stopBits" class="form-control">
+                    <option value="1" selected>1</option>
+                    <option value="2">2</option>
+                </select>
+            </div>
+            
+            <!-- 连接按钮 -->
+            <button id="connectBtn" class="btn btn-primary" disabled>
+                <span id="connectBtnText">打开串口</span>
+                <div id="connectBtnLoading" class="loading" style="display: none;"></div>
+            </button>
+            
+            <!-- 错误信息 -->
+            <div id="errorMessage" class="error-message" style="display: none;"></div>
+        </div>
+        
+        <!-- 通讯面板 -->
+        <div class="communication-panel">
+            <h2 class="panel-title">通讯记录</h2>
+            
+            <!-- 消息列表 -->
+            <div id="messagesContainer" class="messages-container">
+                <div class="message message-system">
+                    <div class="message-content">欢迎使用串口通讯测试工具</div>
+                </div>
+            </div>
+            
+            <!-- 输入区域 -->
+            <div class="input-area">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    class="form-control" 
+                    placeholder="输入要发送的数据..."
+                    disabled
+                >
+                <button id="sendBtn" class="btn btn-primary" disabled>发送</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="bundle.js"></script>
+</body>
+</html>

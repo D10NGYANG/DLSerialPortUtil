@@ -27,20 +27,19 @@ object WebSerialPortManager : ISerialPortManager {
         }
         
         return runCatching {
-            val ports = (js("navigator.serial.getPorts()") as Promise<Array<dynamic>>).await()
-            
-            ports.mapIndexed { index, port ->
-                val info = port.getInfo()
-                val vendorId = info.usbVendorId?.toString(16)?.uppercase() ?: "Unknown"
-                val productId = info.usbProductId?.toString(16)?.uppercase() ?: "Unknown"
-                val description = "Serial Device $index (VID:$vendorId, PID:$productId)"
-                
+            val port = (js("navigator.serial.requestPort()") as Promise<dynamic>).await()
+            val info = port.getInfo()
+            val vendorId = (info.usbVendorId as? Int)?.toString(16)?.uppercase() ?: "Unknown"
+            val productId = (info.usbProductId as? Int)?.toString(16)?.uppercase() ?: "Unknown"
+            val description = "Serial Device (VID:$vendorId, PID:$productId)"
+
+            listOf(
                 SerialPortInfo(
                     id = port.toString(),
                     description = description,
                     obj = port
                 )
-            }
+            )
         }.getOrDefault(emptyList())
     }
     

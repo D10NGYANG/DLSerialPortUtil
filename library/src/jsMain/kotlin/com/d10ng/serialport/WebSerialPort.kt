@@ -64,7 +64,8 @@ class WebSerialPort(
             loop@ while (isActive && sp != null) {
                 runCatching {
                     val result = (reader!!.read() as Promise<dynamic>).await()
-                    if (!result.done && result.value != null) {
+                    if (result.done) break@loop
+                    if (result.value != null) {
                         // 直接将Uint8Array转换为ByteArray并处理
                         val uint8Array = result.value!!
                         val byteArray = ByteArray(uint8Array.length)
