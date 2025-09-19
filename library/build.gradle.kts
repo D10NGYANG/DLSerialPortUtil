@@ -13,12 +13,14 @@ group = "com.github.D10NGYANG"
 version = "0.1.0"
 
 kotlin {
+    jvmToolchain(8)
     androidTarget {
         compilerOptions {
             jvmTarget = JvmTarget.JVM_1_8
         }
         publishLibraryVariants("release")
     }
+    jvm()
     js {
         browser()
         binaries.library()
@@ -41,6 +43,10 @@ kotlin {
             api(libs.serialport.android)
             // USB串口通讯
             api(libs.serialport.android.usb)
+        }
+        jvmMain.dependencies {
+            // 串口通讯
+            api(libs.serialport.jvm)
         }
     }
 }

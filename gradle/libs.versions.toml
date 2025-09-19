@@ -18,6 +18,7 @@ dlcommon = "0.7.0"
 dlapp = "2.6.0"
 serialport-android = "2.1.5"
 serialport-android-usb = "3.9.0"
+serialport-jvm = "2.11.2"
 
 [libraries]
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "androidx-activity-compose" }
@@ -43,6 +44,7 @@ dl-common = { module = "com.github.D10NGYANG:DLCommonUtil", version.ref = "dlcom
 dl-app = { module = "com.github.D10NGYANG:DLAppUtil", version.ref = "dlapp" }
 serialport-android = { module = "com.licheedev:android-serialport", version.ref = "serialport-android" }
 serialport-android-usb = { module = "com.github.mik3y:usb-serial-for-android", version.ref = "serialport-android-usb" }
+serialport-jvm = { module = "com.fazecast:jSerialComm", version.ref = "serialport-jvm" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
