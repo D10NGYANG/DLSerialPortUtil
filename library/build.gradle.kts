@@ -27,6 +27,8 @@ kotlin {
     }
     linuxX64()
     linuxArm64()
+    macosX64()
+    macosArm64()
 
     sourceSets {
         commonMain.dependencies {
