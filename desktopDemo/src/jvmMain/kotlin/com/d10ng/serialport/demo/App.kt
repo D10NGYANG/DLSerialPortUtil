@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -128,7 +129,7 @@ fun App() {
             launch {
                 p.outputDataFlow.collect { data ->
                     val text = kotlin.runCatching { String(data, Charsets.UTF_8) }.getOrElse { data.decodeToString() }
-                    addMsg("接收: $text", MsgType.RECEIVED)
+                    addMsg(text, MsgType.RECEIVED)
                 }
             }
         }
@@ -155,15 +156,13 @@ fun App() {
         ) {
             // 左侧：串口配置区
             Surface(
-                tonalElevation = 4.dp,
-                shadowElevation = 4.dp,
                 shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
                 modifier = Modifier
-                    .width(360.dp)
+                    .width(240.dp)
                     .fillMaxHeight()
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     var portMenuExpanded by remember { mutableStateOf(false) }
                     ExposedDropdownMenuBox(
                         expanded = portMenuExpanded,
@@ -324,23 +323,19 @@ fun App() {
             }
             // 中间分隔线
             VerticalDivider(
-                modifier = Modifier
-                    .padding(horizontal = 20.dp)
-                    .fillMaxHeight(),
+                modifier = Modifier.padding(horizontal = 16.dp).fillMaxHeight(),
                 thickness = 1.dp,
                 color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
             )
             // 右侧：通讯测试区
             Surface(
-                tonalElevation = 2.dp,
-                shadowElevation = 2.dp,
                 shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     // 消息区（减少嵌套：移除内部 Surface，直接在 LazyColumn 上做圆角与背景）
                     LazyColumn(
                         state = listState,
@@ -407,7 +402,7 @@ fun App() {
                                 scope.launch {
                                     val ok = runCatching { p.write((msg + "\r\n").toByteArray(Charsets.UTF_8)) }.getOrDefault(false)
                                     if (ok) {
-                                        addMsg("发送: $msg", MsgType.SENT)
+                                        addMsg(msg, MsgType.SENT)
                                         input = ""
                                     } else {
                                         addMsg("发送数据失败", MsgType.SYSTEM)

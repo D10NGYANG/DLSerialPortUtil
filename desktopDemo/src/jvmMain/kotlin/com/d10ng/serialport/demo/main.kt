@@ -6,7 +6,7 @@ import androidx.compose.ui.window.application
 fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
-        title = "KotlinProject",
+        title = "串口通讯测试",
     ) {
         App()
     }
