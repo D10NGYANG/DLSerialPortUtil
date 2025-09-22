@@ -107,25 +107,25 @@ class PosixSerialPort(
             cfmakeraw(tty.ptr)
 
             // 启用接收器，忽略调制解调器控制线
-            tty.c_cflag = (tty.c_cflag.toInt() or CREAD or CLOCAL).toUInt()
+            tty.c_cflag = (tty.c_cflag.toInt() or CREAD or CLOCAL).toULong()
 
             // 配置数据位
-            tty.c_cflag = (tty.c_cflag.toInt() and CSIZE.inv()).toUInt()
+            tty.c_cflag = (tty.c_cflag.toInt() and CSIZE.inv()).toULong()
             tty.c_cflag = when (config.dataBits) {
-                DataBits.V7 -> (tty.c_cflag.toInt() or CS7).toUInt()
-                DataBits.V8 -> (tty.c_cflag.toInt() or CS8).toUInt()
+                DataBits.V7 -> (tty.c_cflag.toInt() or CS7).toULong()
+                DataBits.V8 -> (tty.c_cflag.toInt() or CS8).toULong()
             }
 
             // 配置停止位
             if (config.stopBits == StopBits.V2) {
-                tty.c_cflag = (tty.c_cflag.toInt() or CSTOPB).toUInt()
+                tty.c_cflag = (tty.c_cflag.toInt() or CSTOPB).toULong()
             }
 
             // 配置校验位
             tty.c_cflag = when (config.parity) {
-                Parity.NONE -> (tty.c_cflag.toInt() and PARENB.inv()).toUInt()
-                Parity.EVEN -> (tty.c_cflag.toInt() or PARENB).toUInt()
-                Parity.ODD  -> (tty.c_cflag.toInt() or PARENB or PARODD).toUInt()
+                Parity.NONE -> (tty.c_cflag.toInt() and PARENB.inv()).toULong()
+                Parity.EVEN -> (tty.c_cflag.toInt() or PARENB).toULong()
+                Parity.ODD  -> (tty.c_cflag.toInt() or PARENB or PARODD).toULong()
             }
 
             // 设置波特率
@@ -136,8 +136,8 @@ class PosixSerialPort(
                 BaudRate.V57600  -> B57600
                 BaudRate.V115200 -> B115200
             }
-            cfsetispeed(tty.ptr, baudRate.toUInt())
-            cfsetospeed(tty.ptr, baudRate.toUInt())
+            cfsetispeed(tty.ptr, baudRate.toULong())
+            cfsetospeed(tty.ptr, baudRate.toULong())
 
             // 设置 VTIME/VMIN
             tty.c_cc[VMIN] = 1u     // 至少读 1 个字节才返回
