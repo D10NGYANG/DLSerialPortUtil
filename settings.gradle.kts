@@ -1,3 +1,6 @@
+rootProject.name = "DLSerialPortUtil"
+enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+
 pluginManagement {
     repositories {
         google {
@@ -12,7 +15,6 @@ pluginManagement {
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
     repositories {
         maven("https://jitpack.io") {
             mavenContent {
@@ -29,7 +31,10 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DLSerialPortUtil"
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
 include(":androidDemo")
 include(":jsDemo")
 include(":library")
