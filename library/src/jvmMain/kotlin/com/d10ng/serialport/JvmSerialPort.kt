@@ -44,8 +44,7 @@ class JvmSerialPort(
                 config.parity.intValue
             )
             port.setFlowControl(SerialPort.FLOW_CONTROL_DISABLED)
-            // 读取模式设为半阻塞，确保至少读取到1字节数据再返回，同时避免无限阻塞
-            port.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 100, 0)
+            port.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, 0, 0)
 
             if (!port.openPort()) throw Exception("connect fail: open port fail")
 

@@ -2,9 +2,7 @@ package com.d10ng.serialport.demo
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -24,17 +24,14 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Surface
 import androidx.compose.material3.VerticalDivider
-import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -46,7 +43,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.d10ng.serialport.BaseSerialPort
 import com.d10ng.serialport.BaudRate
@@ -56,6 +55,8 @@ import com.d10ng.serialport.Parity
 import com.d10ng.serialport.SerialPortConfig
 import com.d10ng.serialport.SerialPortInfo
 import com.d10ng.serialport.StopBits
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -67,7 +68,7 @@ private data class Msg(val time: String, val content: String, val type: MsgType)
 @Composable
 fun App() {
     MaterialTheme {
-        val scope = rememberCoroutineScope()
+        val scope = rememberCoroutineScope { Dispatchers.IO }
 
         // 串口与配置状态
         var ports by remember { mutableStateOf<List<SerialPortInfo>>(emptyList()) }
@@ -86,9 +87,10 @@ fun App() {
         // 消息与输入
         val messages = remember { mutableStateListOf<Msg>() }
         var input by remember { mutableStateOf("") }
+        val listState = rememberLazyListState()
 
         fun addMsg(content: String, type: MsgType) {
-            val ts = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"))
+            val ts = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss.SSS"))
             messages.add(Msg(ts, content, type))
         }
 
@@ -128,6 +130,13 @@ fun App() {
                     val text = kotlin.runCatching { String(data, Charsets.UTF_8) }.getOrElse { data.decodeToString() }
                     addMsg("接收: $text", MsgType.RECEIVED)
                 }
+            }
+        }
+
+        // 新消息自动滚动到底部
+        LaunchedEffect(messages.size) {
+            if (messages.isNotEmpty()) {
+                listState.animateScrollToItem(messages.lastIndex)
             }
         }
 
@@ -332,33 +341,45 @@ fun App() {
                     .fillMaxHeight()
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    // 消息区
-                    Surface(
-                        tonalElevation = 1.dp,
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainer,
+                    // 消息区（减少嵌套：移除内部 Surface，直接在 LazyColumn 上做圆角与背景）
+                    LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainer)
+                            .padding(16.dp)
                     ) {
-                        LazyColumn(modifier = Modifier.padding(16.dp).fillMaxSize()) {
-                            items(messages) { m ->
-                                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                                    Text(
-                                        m.time,
-                                        modifier = Modifier.width(70.dp),
-                                        fontWeight = FontWeight.Medium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(Modifier.size(12.dp))
-                                    val color = when (m.type) {
-                                        MsgType.SYSTEM -> MaterialTheme.colorScheme.onSurfaceVariant
-                                        MsgType.SENT -> MaterialTheme.colorScheme.primary
-                                        MsgType.RECEIVED -> MaterialTheme.colorScheme.secondary
-                                    }
-                                    Text(m.content, color = color)
-                                }
+                        items(messages) { m ->
+                            val (bg, fg) = when (m.type) {
+                                MsgType.SENT -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
+                                MsgType.RECEIVED -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
+                                MsgType.SYSTEM -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
                             }
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = if (m.type == MsgType.SENT) Alignment.End else Alignment.Start
+                            ) {
+                                Text(
+                                    m.time,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Clip
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    m.content,
+                                    color = fg,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(bg)
+                                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
                         }
                     }
 
