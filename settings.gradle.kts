@@ -36,6 +36,7 @@ plugins {
 }
 
 include(":androidDemo")
+include(":desktopDemo")
 include(":jsDemo")
 include(":library")
  

@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.kotlin.multiplatform) apply false
+    alias(libs.plugins.compose.hotreload) apply false
+    alias(libs.plugins.compose.multiplatform) apply false
     id("com.github.ben-manes.versions") version "0.52.0"
 }
 
