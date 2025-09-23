@@ -26,7 +26,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.swing)
 
             // serialport
-            implementation(project(":library"))
+            implementation(project(":DLSerialPortUtil"))
         }
     }
 }

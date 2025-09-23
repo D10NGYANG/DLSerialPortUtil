@@ -17,7 +17,7 @@ kotlin {
         }
         macosMain.dependencies {
             // 串口通讯
-            implementation(project(":library"))
+            implementation(project(":DLSerialPortUtil"))
         }
     }
 }

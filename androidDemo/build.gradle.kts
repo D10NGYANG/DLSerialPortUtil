@@ -72,5 +72,5 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
 
     // serialport
-    implementation(project(":library"))
+    implementation(project(":DLSerialPortUtil"))
 }
