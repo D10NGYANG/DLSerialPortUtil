@@ -5,7 +5,7 @@
 [![Linux](https://img.shields.io/badge/Linux-supported-lightgrey?logo=linux&logoColor=white)](#)
 [![macOS](https://img.shields.io/badge/macOS-supported-black?logo=apple&logoColor=white)](#)
 [![Web Serial](https://img.shields.io/badge/Web%20Serial-supported-orange?logo=google-chrome&logoColor=white)](#)
-[![Latest](https://img.shields.io/badge/version-0.2.0-blue)](#)
+[![Latest](https://img.shields.io/badge/version-0.3.0-blue)](#)
 
 ## 特性
 - Kotlin Multiplatform：在 `commonMain` 使用统一 API，平台差异由库内部适配
@@ -56,7 +56,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.2.0")
+                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.3.0")
             }
         }
     }
@@ -79,6 +79,11 @@ val scope = CoroutineScope(Dispatchers.Default)
 suspend fun demo() {
     // 获取平台串口管理器
     val manager = getPlatformSerialPortManager()
+  
+    // 判断当前环境是否支持串口通讯
+    if (!manager.isSupported()) {
+        println("Serial port not supported")
+    }
 
     // 列出可用串口
     val ports = manager.listPorts()
@@ -115,6 +120,7 @@ suspend fun demo() {
 
 ### API 概览
 - 串口管理器：`getPlatformSerialPortManager()` 获取当前平台实现
+  - `fun isSupported(): Boolean` 判断当前平台环境是否支持串口通讯
   - `suspend fun listPorts(): List<SerialPortInfo>` 列出串口设备
   - `suspend fun open(portInfo: SerialPortInfo, config: SerialPortConfig): BaseSerialPort` 打开串口
 - 串口对象：`BaseSerialPort`
