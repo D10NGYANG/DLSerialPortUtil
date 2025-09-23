@@ -11,6 +11,10 @@ import platform.posix.*
 @OptIn(ExperimentalForeignApi::class)
 object PosixSerialPortManager: ISerialPortManager {
 
+    override fun isSupported(): Boolean {
+        return true
+    }
+
     override suspend fun listPorts(): List<SerialPortInfo> {
         val ports = mutableListOf<SerialPortInfo>()
 

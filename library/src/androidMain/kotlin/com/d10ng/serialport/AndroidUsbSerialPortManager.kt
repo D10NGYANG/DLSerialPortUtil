@@ -8,6 +8,11 @@ import com.hoho.android.usbserial.driver.UsbSerialProber
  * @Date 2025/9/19 09:20
  */
 object AndroidUsbSerialPortManager: ISerialPortManager {
+
+    override fun isSupported(): Boolean {
+        return true
+    }
+
     override suspend fun listPorts(): List<SerialPortInfo> {
         return UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
             .map { driver ->

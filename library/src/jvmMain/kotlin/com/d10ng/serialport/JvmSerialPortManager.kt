@@ -9,6 +9,10 @@ import com.fazecast.jSerialComm.SerialPort
  */
 object JvmSerialPortManager : ISerialPortManager {
 
+    override fun isSupported(): Boolean {
+        return true
+    }
+
     override suspend fun listPorts(): List<SerialPortInfo> {
         return SerialPort.getCommPorts()
             .map { port ->

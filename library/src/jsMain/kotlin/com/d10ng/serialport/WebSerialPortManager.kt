@@ -13,7 +13,7 @@ object WebSerialPortManager : ISerialPortManager {
     /**
      * 检查浏览器是否支持Web Serial API
      */
-    fun isSupported(): Boolean {
+    override fun isSupported(): Boolean {
         return js("typeof navigator !== 'undefined' && 'serial' in navigator") as Boolean
     }
     

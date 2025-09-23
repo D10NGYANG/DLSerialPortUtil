@@ -8,7 +8,14 @@ package com.d10ng.serialport
 interface ISerialPortManager{
 
     /**
+     * 判断当前环境是否支持串口通讯
+     * @return Boolean
+     */
+    fun isSupported(): Boolean
+
+    /**
      * 获取串口列表
+     * @return List<SerialPortInfo>
      */
     suspend fun listPorts(): List<SerialPortInfo>
 

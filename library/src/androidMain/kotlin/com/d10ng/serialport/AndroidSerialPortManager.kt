@@ -8,6 +8,11 @@ import java.io.File
  * @Date 2025/9/18 17:23
  */
 object AndroidSerialPortManager: ISerialPortManager {
+
+    override fun isSupported(): Boolean {
+        return true
+    }
+
     override suspend fun listPorts(): List<SerialPortInfo> {
         val devDir = File("/dev/")
         if (!devDir.exists() || !devDir.isDirectory) {
