@@ -39,3 +39,11 @@ abstract class BaseSerialPort(
      */
     abstract fun close()
 }
+
+/**
+ * 创建平台串口
+ * @param info SerialPortInfo 串口信息
+ * @param config SerialPortConfig 串口配置
+ * @return BaseSerialPort
+ */
+expect fun buildPlatformSerialPort(info: SerialPortInfo, config: SerialPortConfig): BaseSerialPort
