@@ -21,4 +21,7 @@ interface ISerialPortManager{
     suspend fun open(portInfo: SerialPortInfo, config: SerialPortConfig): BaseSerialPort
 }
 
-//expect fun getPlatformSerialPortManager(): ISerialPortManager
+/**
+ * 获取平台串口管理器
+ */
+expect fun getPlatformSerialPortManager(): ISerialPortManager
