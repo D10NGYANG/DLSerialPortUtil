@@ -56,6 +56,9 @@ import platform.posix.termios
  * 2) 依次选择：波特率、数据位、校验位、停止位
  * 3) 打开串口后实时显示通讯记录，底部有输入区域，回车发送
  */
+/** 常量：日志缓冲区大小与显示行数 */
+private const val MAX_LOG_BUFFER = 200
+private const val MAX_RECENT_LOG_LINES = 30
 fun main() = runBlocking {
     Terminal.init()
     try {
@@ -72,6 +75,7 @@ fun main() = runBlocking {
     }
 }
 
+/** 列出可用串口并支持刷新与上下键选择。返回被选中的串口信息。 */
 private suspend fun selectPort(): SerialPortInfo {
     var selected = 1 // 默认选中第一个实际串口（index 1，因为 0 是“刷新”）
     while (true) {
@@ -94,6 +98,7 @@ private suspend fun selectPort(): SerialPortInfo {
     }
 }
 
+/** 依次选择串口参数：波特率/数据位/校验位/停止位，返回配置。 */
 private fun selectConfig(): SerialPortConfig {
     var cfg = SerialPortConfig()
 
@@ -124,11 +129,17 @@ private fun selectConfig(): SerialPortConfig {
     return cfg
 }
 
+/**
+ * 串口通讯界面：显示实时日志与输入框，回车发送，Ctrl+C 退出。
+ * - 后台协程实时接收并追加日志
+ * - 日志在内存中做上限裁剪，避免无限增长
+ */
 private suspend fun runChat(portInfo: SerialPortInfo, config: SerialPortConfig) {
+    // 日志与并发控制
     val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     val logs = mutableListOf<String>()
     val logMutex = Mutex()
-    val maxLog = 200
+    val maxLog = MAX_LOG_BUFFER
 
     val port = PosixSerialPortManager.open(portInfo, config)
 
@@ -163,8 +174,8 @@ private suspend fun runChat(portInfo: SerialPortInfo, config: SerialPortConfig) 
         val ch = Terminal.readKey()
         when (ch) {
             Key.ENTER -> {
-                val text = "${inputBuffer}\r\n"
-                if (text.isNotEmpty()) {
+                if (inputBuffer.isNotEmpty()) {
+                    val text = "${inputBuffer}\r\n"
                     val bytes = text.encodeToByteArray()
                     if (withContext(Dispatchers.Default) { port.write(bytes) }) {
                         appendLog("TX | $text")
@@ -195,7 +206,7 @@ private suspend fun runChat(portInfo: SerialPortInfo, config: SerialPortConfig) 
     port.close()
 }
 
-// 选择列表（上下键/Enter）
+/** 控制台交互式列表选择器（支持 ↑/↓ 或 j/k 移动，Enter 确认）。返回被选中的索引。 */
 private fun chooseFromList(title: String, items: List<String>, selectedIndex: Int = 0): Int {
     var idx = selectedIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))
     renderList(title, items, idx)
@@ -216,6 +227,7 @@ private fun chooseFromList(title: String, items: List<String>, selectedIndex: In
     }
 }
 
+/** 渲染可选择列表并高亮当前选项。 */
 private fun renderList(title: String, items: List<String>, selectedIndex: Int) {
     Terminal.clear()
     println(title)
@@ -235,13 +247,14 @@ private fun renderList(title: String, items: List<String>, selectedIndex: Int) {
     fflush(stdout)
 }
 
+/** 渲染通讯界面：顶部显示端口与参数，中部显示最近日志，底部显示输入行。 */
 private fun renderChat(portInfo: SerialPortInfo, config: SerialPortConfig, logs: List<String>, input: String) {
     Terminal.clear()
     println("串口: ${portInfo.id}")
     println("参数: ${config.baudRate.intValue} ${config.dataBits.intValue}${config.parity.charValue}${config.stopBits.intValue}")
     println("------------------------------ 日志 (Ctrl+C 退出) ------------------------------")
-    // 仅显示最近 30 行，避免刷屏过多
-    val recent = if (logs.size > 30) logs.takeLast(30) else logs
+    // 仅显示最近 MAX_RECENT_LOG_LINES 行，避免刷屏过多
+    val recent = if (logs.size > MAX_RECENT_LOG_LINES) logs.takeLast(MAX_RECENT_LOG_LINES) else logs
     recent.forEach { println(it) }
     println("--------------------------------------------------------------------------------")
     print("> $input")
@@ -249,6 +262,10 @@ private fun renderChat(portInfo: SerialPortInfo, config: SerialPortConfig, logs:
 }
 
 // 终端工具：raw 模式、读键、清屏等
+/**
+ * 终端工具：将终端切换到原始(raw)模式以实现无回显、非规范化输入；
+ * 提供清屏、光标显隐控制与键盘读取。
+ */
 @OptIn(ExperimentalForeignApi::class)
 private object Terminal {
     private var orig: CPointer<termios>? = null
@@ -267,11 +284,11 @@ private object Terminal {
             memcpy(saved.ptr, t.ptr, sizeOf<termios>().convert())
             orig = saved.ptr
 
-            // 进入 raw 模式
+            // 进入 raw 模式：关闭回显(ECHO)、规范模式(ICANON)、信号(ISIG)、扩展(IEXTEN)
             val raw = t
             raw.c_lflag = (raw.c_lflag.toInt() and ECHO.inv() and ICANON.inv() and ISIG.inv() and IEXTEN.inv()).toULong()
-            raw.c_cc[VMIN] = 1u
-            raw.c_cc[VTIME] = 0u
+            raw.c_cc[VMIN] = 1u   // 至少读取 1 字节
+            raw.c_cc[VTIME] = 0u  // 非阻塞超时
             tcsetattr(fd, TCSANOW, raw.ptr)
         }
     }
