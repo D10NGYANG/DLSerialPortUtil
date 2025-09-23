@@ -1,11 +1,12 @@
 package com.d10ng.serialport
 
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
-import kotlinx.cinterop.refTo
 import kotlinx.cinterop.set
+import kotlinx.cinterop.usePinned
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -24,7 +25,9 @@ import platform.posix.CS7
 import platform.posix.CS8
 import platform.posix.CSIZE
 import platform.posix.CSTOPB
+import platform.posix.EAGAIN
 import platform.posix.EINTR
+import platform.posix.EWOULDBLOCK
 import platform.posix.O_NOCTTY
 import platform.posix.O_NONBLOCK
 import platform.posix.O_RDWR
@@ -158,7 +161,9 @@ class PosixSerialPort(
         readJob = scope.launch {
             loop@ while (isActive && fd != -1) {
                 runCatching {
-                    val bytesRead = read(fd, buffer.refTo(0), buffer.size.toULong()).toInt()
+                    val bytesRead = buffer.usePinned { pinned ->
+                        read(fd, pinned.addressOf(0), buffer.size.toULong())
+                    }.toInt()
                     when {
                         bytesRead > 0 -> {
                             // 复制前 bytesRead 个字节发出
@@ -170,7 +175,7 @@ class PosixSerialPort(
                         }
                         bytesRead == -1 -> {
                             when (errno) {
-                                EINTR -> continue@loop      // 被信号打断，重试
+                                EINTR, EAGAIN, EWOULDBLOCK -> continue@loop // 可重试
                                 else -> break@loop          // 真错误，退出
                             }
                         }
@@ -181,12 +186,11 @@ class PosixSerialPort(
         }
     }
 
-
     override suspend fun write(data: ByteArray): Boolean {
         if (fd == -1) return false
         return runCatching {
-            memScoped {
-                val bytesWritten = write(fd, data.refTo(0), data.size.toULong()).toInt()
+            data.usePinned { pinned ->
+                val bytesWritten = write(fd, pinned.addressOf(0), data.size.toULong()).toInt()
                 bytesWritten == data.size
             }
         }.getOrDefault(false)

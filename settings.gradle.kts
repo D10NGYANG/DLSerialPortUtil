@@ -35,8 +35,6 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
-include(":androidDemo")
-include(":desktopDemo")
-include(":jsDemo")
+include(":androidDemo", ":desktopDemo", ":jsDemo", ":macosDemo")
 include(":library")
  
