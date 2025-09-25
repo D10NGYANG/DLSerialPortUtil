@@ -45,6 +45,7 @@ class AndroidSerialPort(
             startRead()
             openStateFlow.value = true
         }.onFailure { exception ->
+            log.w { "open fail: ${exception.message}" }
             sp = null
             throw exception
         }
@@ -63,6 +64,8 @@ class AndroidSerialPort(
             val cmd = "chmod 777 ${device.absolutePath}\nexit\n"
             su.outputStream.write(cmd.toByteArray())
             0 == su.waitFor() && device.canRead() && device.canWrite() && device.canExecute()
+        }.onFailure { exception ->
+            log.w { "chmod 777 ${device.absolutePath} fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 
@@ -77,7 +80,10 @@ class AndroidSerialPort(
                     } else if (size == -1) {
                         break@loop
                     }
-                }.onFailure { break@loop }
+                }.onFailure { exception ->
+                    log.w { "read fail: ${exception.message}" }
+                    break@loop
+                }
             }
             close()
         }
@@ -90,6 +96,8 @@ class AndroidSerialPort(
                 os.flush()
             }
             true
+        }.onFailure { exception ->
+            log.w { "write fail: ${exception.message}"}
         }.getOrDefault(false)
     }
 

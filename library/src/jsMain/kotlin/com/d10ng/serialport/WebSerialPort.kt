@@ -52,6 +52,7 @@ class WebSerialPort(
             
             openStateFlow.value = true
         }.onFailure { exception ->
+            log.w { "open fail: ${exception.message}" }
             sp = null
             reader = null
             writer = null
@@ -74,7 +75,10 @@ class WebSerialPort(
                         }
                         outputDataFlow.tryEmit(byteArray)
                     }
-                }.onFailure { break@loop }
+                }.onFailure { exception ->
+                    log.w { "read fail: ${exception.message}" }
+                    break@loop
+                }
             }
             close()
         }
@@ -87,6 +91,8 @@ class WebSerialPort(
             uint8Array.set(data.toTypedArray())
             (writer!!.write(uint8Array) as Promise<dynamic>).await()
             true
+        }.onFailure { exception ->
+            log.w { "write fail: ${exception.message}"}
         }.getOrDefault(false)
     }
 

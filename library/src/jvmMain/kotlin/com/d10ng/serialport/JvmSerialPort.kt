@@ -52,6 +52,7 @@ class JvmSerialPort(
             startRead()
             openStateFlow.value = true
         }.onFailure { exception ->
+            log.w { "open fail: ${exception.message}" }
             sp = null
             throw exception
         }
@@ -68,7 +69,10 @@ class JvmSerialPort(
                     } else if (size == -1) {
                         break@loop
                     }
-                }.onFailure { break@loop }
+                }.onFailure { exception ->
+                    log.w { "read fail: ${exception.message}" }
+                    break@loop
+                }
             }
             close()
         }
@@ -81,6 +85,8 @@ class JvmSerialPort(
                 os.flush()
             }
             true
+        }.onFailure { exception ->
+            log.w { "write fail: ${exception.message}"}
         }.getOrDefault(false)
     }
 

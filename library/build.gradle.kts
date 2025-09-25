@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.github.D10NGYANG"
-version = "0.3.1"
+version = "0.3.2"
 
 kotlin {
     jvmToolchain(8)
@@ -34,6 +34,8 @@ kotlin {
         commonMain.dependencies {
             // 协程
             implementation(libs.kotlinx.coroutines)
+            // 日志库
+            implementation(libs.dl.log)
         }
         androidMain.dependencies {
             implementation(libs.androidx.core.ktx)

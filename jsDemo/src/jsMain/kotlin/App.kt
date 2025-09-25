@@ -4,12 +4,14 @@
  * @Date 2025/9/19 14:32
  */
 
+import com.d10ng.log.LogLevel
 import com.d10ng.serialport.BaseSerialPort
 import com.d10ng.serialport.BaudRate
 import com.d10ng.serialport.DataBits
 import com.d10ng.serialport.Parity
 import com.d10ng.serialport.SerialPortConfig
 import com.d10ng.serialport.SerialPortInfo
+import com.d10ng.serialport.SerialPortManagerLog
 import com.d10ng.serialport.StopBits
 import com.d10ng.serialport.WebSerialPortManager
 import kotlinx.browser.document
@@ -36,6 +38,7 @@ private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
 fun main() {
     window.addEventListener("load", {
+        SerialPortManagerLog.miniLevel = LogLevel.VERBOSE
         initializeApp()
     })
 }

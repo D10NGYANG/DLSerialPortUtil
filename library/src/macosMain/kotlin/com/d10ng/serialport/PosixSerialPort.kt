@@ -86,6 +86,7 @@ class PosixSerialPort(
             
             openStateFlow.value = true
         }.onFailure { exception ->
+            log.w { "open fail: ${exception.message}" }
             if (fd != -1) {
                 close(fd)
                 fd = -1
@@ -180,7 +181,10 @@ class PosixSerialPort(
                             }
                         }
                     }
-                }.onFailure { break@loop }
+                }.onFailure { exception ->
+                    log.w { "read fail: ${exception.message}" }
+                    break@loop
+                }
             }
             close() // 清理
         }
@@ -193,6 +197,8 @@ class PosixSerialPort(
                 val bytesWritten = write(fd, pinned.addressOf(0), data.size.toULong()).toInt()
                 bytesWritten == data.size
             }
+        }.onFailure { exception ->
+            log.w { "write fail: ${exception.message}"}
         }.getOrDefault(false)
     }
 

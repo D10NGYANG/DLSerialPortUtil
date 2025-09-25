@@ -3,7 +3,7 @@
 Kotlin Multiplatform 串口通讯库。
 
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-blueviolet?logo=kotlin&logoColor=white)](#)
-[![Latest](https://img.shields.io/badge/version-0.3.1-blue)](#)
+[![Latest](https://img.shields.io/badge/version-0.3.2-blue)](#)
 
 ## 特性
 - Kotlin Multiplatform：在 `commonMain` 使用统一 API，平台差异由库内部适配
@@ -45,6 +45,12 @@ dependencyResolutionManagement {
             includeGroupAndSubgroups("com.github.D10NGYANG")
           }
         }
+        // 为 Android USB 串口的传递依赖提供仓库
+        maven("https://jitpack.io") {
+          mavenContent {
+            includeGroupAndSubgroups("com.github.mik3y")
+          }
+        }
         google()
         mavenCentral()
     }
@@ -58,12 +64,50 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.3.1")
+                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.3.2")
             }
         }
     }
 }
 ```
+
+## 日志输出控制
+
+本库内部使用 [DLLogUtil](https://github.com/D10NGYANG/DLLogUtil) 进行日志记录。若需要在你的项目中控制日志输出等级，或收集日志，请在你的 KMP 模块添加日志库依赖（建议在 `commonMain`）：
+
+```kotlin
+kotlin {
+    sourceSets {
+        val commonMain by getting {
+            dependencies {
+                // 日志库（用于控制输出等级）
+                implementation("com.github.D10NGYANG:DLLogUtil:0.1.0")
+            }
+        }
+    }
+}
+```
+
+设置日志输出等级（示例）：
+
+```kotlin
+import com.d10ng.serialport.SerialPortManagerLog
+import com.d10ng.log.LogLevel
+
+fun initLogging() {
+    // 仅输出 WARN 及以上级别
+    SerialPortManagerLog.miniLevel = LogLevel.WARN
+
+    // 如需输出更详细的日志（包含所有等级）
+    // SerialPortManagerLog.miniLevel = LogLevel.VERBOSE
+  
+    // 关闭日志输出
+    // SerialPortManagerLog.miniLevel = LogLevel.NONE
+}
+```
+
+- 常见日志等级：`VERBOSE`、`DEBUG`、`INFO`、`WARN`、`ERROR`、`NONE`（具体以 DLLogUtil 定义为准）
+- 推荐在应用启动时设置，如：Android 的 `Application.onCreate`、JVM/桌面项目的 `main` 函数、Web 页面初始化等
 
 ## 快速上手
 
@@ -151,7 +195,7 @@ suspend fun demo() {
 - 基于 Web Serial API：
   - 需要 HTTPS（或 `localhost`）环境
   - 需要用户手势触发设备选择（例如点击按钮后调用）
-- `listPorts()` 在 Web 平台会触发设备选择弹窗并返回用户授权的设备；
+- `listPorts()` 在 Web 平台会触发设备选择弹窗并返回用户授权的设备；用户取消授权时返回空列表；
 - 可通过 `WebSerialPortManager.isSupported()` 检查浏览器是否支持；
 
 ### JVM 桌面 / Linux / macOS

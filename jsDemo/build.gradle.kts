@@ -15,6 +15,8 @@ kotlin {
         commonMain.dependencies {
             // 协程
             implementation(libs.kotlinx.coroutines)
+            // 日志库
+            implementation(libs.dl.log)
         }
         jsMain.dependencies {
             // 串口通讯

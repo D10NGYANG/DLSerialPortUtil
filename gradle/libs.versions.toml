@@ -20,6 +20,7 @@ kotlinx-coroutines = "1.10.2"
 serialport-android = "2.1.5"
 serialport-android-usb = "3.9.0"
 serialport-jvm = "2.11.2"
+dllogutil = "0.1.0"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity-compose" }
@@ -47,6 +48,7 @@ kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-
 serialport-android = { module = "com.licheedev:android-serialport", version.ref = "serialport-android" }
 serialport-android-usb = { module = "com.github.mik3y:usb-serial-for-android", version.ref = "serialport-android-usb" }
 serialport-jvm = { module = "com.fazecast:jSerialComm", version.ref = "serialport-jvm" }
+dl-log = { module = "com.github.D10NGYANG:DLLogUtil", version.ref = "dllogutil" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

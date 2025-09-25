@@ -80,6 +80,7 @@ class AndroidUsbSerialPort(
             startRead()
             openStateFlow.value = true
         }.onFailure { exception ->
+            log.w { "open fail: ${exception.message}" }
             sp = null
             throw exception
         }
@@ -96,7 +97,10 @@ class AndroidUsbSerialPort(
                     } else if (size == -1) {
                         break@loop
                     }
-                }.onFailure { break@loop }
+                }.onFailure { exception ->
+                    log.w { "read fail: ${exception.message}" }
+                    break@loop
+                }
             }
             close()
         }
@@ -106,6 +110,8 @@ class AndroidUsbSerialPort(
         return runCatching {
             sp!!.write(data, WRITE_WAIT_MILLIS)
             true
+        }.onFailure { exception ->
+            log.w { "write fail: ${exception.message}"}
         }.getOrDefault(false)
     }
 
