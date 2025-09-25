@@ -5,7 +5,7 @@
 [![Linux](https://img.shields.io/badge/Linux-supported-lightgrey?logo=linux&logoColor=white)](#)
 [![macOS](https://img.shields.io/badge/macOS-supported-black?logo=apple&logoColor=white)](#)
 [![Web Serial](https://img.shields.io/badge/Web%20Serial-supported-orange?logo=google-chrome&logoColor=white)](#)
-[![Latest](https://img.shields.io/badge/version-0.3.0-blue)](#)
+[![Latest](https://img.shields.io/badge/version-0.3.1-blue)](#)
 
 ## 特性
 - Kotlin Multiplatform：在 `commonMain` 使用统一 API，平台差异由库内部适配
@@ -56,7 +56,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.3.0")
+                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.3.1")
             }
         }
     }
