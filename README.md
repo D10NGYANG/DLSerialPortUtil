@@ -1,10 +1,8 @@
 # DLSerialPortUtil
+
+Kotlin Multiplatform 串口通讯库。
+
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-blueviolet?logo=kotlin&logoColor=white)](#)
-[![Android](https://img.shields.io/badge/Android-supported-brightgreen?logo=android&logoColor=white)](#)
-[![JVM](https://img.shields.io/badge/JVM-supported-blue)](#)
-[![Linux](https://img.shields.io/badge/Linux-supported-lightgrey?logo=linux&logoColor=white)](#)
-[![macOS](https://img.shields.io/badge/macOS-supported-black?logo=apple&logoColor=white)](#)
-[![Web Serial](https://img.shields.io/badge/Web%20Serial-supported-orange?logo=google-chrome&logoColor=white)](#)
 [![Latest](https://img.shields.io/badge/version-0.3.1-blue)](#)
 
 ## 特性
@@ -18,11 +16,11 @@
 - Web（浏览器）：基于 Web Serial API，支持通过浏览器访问串口设备
 
 ## 支持平台
-- Android（机内串口与 USB 串口）
-- JVM（Windows / Linux / macOS）
-- Linux（linuxX64 / linuxArm64）
-- macOS（macosX64 / macosArm64）
-- JavaScript（Browser，Web Serial API）
+- ![Android](https://img.shields.io/badge/Android%20机内串口%2FUSB-✅-black?logo=android)
+- ![JVM](https://img.shields.io/badge/JVM%20Windows%2FLinux%2FmacOS-✅-black?logo=java)
+- ![Linux x64/arm64](https://img.shields.io/badge/Linux%20x64%2Farm64-✅-black?logo=linux)
+- ![macOS x64/arm64](https://img.shields.io/badge/macOS%20x64%2Farm64-✅-black?logo=apple)
+- ![JavaScript](https://img.shields.io/badge/JavaScript%20Web%20Serial-✅-black?logo=google-chrome)
 
 ### 平台支持矩阵
 
@@ -42,7 +40,11 @@
 // settings.gradle.kts 或 build.gradle.kts 中的仓库（推荐）
 dependencyResolutionManagement {
     repositories {
-        maven("https://raw.githubusercontent.com/D10NGYANG/maven-repo/main/repository")
+        maven("https://raw.githubusercontent.com/D10NGYANG/maven-repo/main/repository") {
+          mavenContent {
+            includeGroupAndSubgroups("com.github.D10NGYANG")
+          }
+        }
         google()
         mavenCentral()
     }
