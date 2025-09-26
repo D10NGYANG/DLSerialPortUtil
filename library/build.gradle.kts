@@ -25,6 +25,10 @@ kotlin {
         browser()
         binaries.library()
     }
+    wasmJs {
+        browser()
+        binaries.library()
+    }
     linuxX64()
     linuxArm64()
     macosX64()
@@ -51,6 +55,10 @@ kotlin {
         jvmMain.dependencies {
             // 串口通讯
             api(libs.serialport.jvm)
+        }
+        wasmJsMain.dependencies {
+            // Web API支持
+            implementation("org.jetbrains.kotlinx:kotlinx-browser:0.5.0")
         }
     }
 }
