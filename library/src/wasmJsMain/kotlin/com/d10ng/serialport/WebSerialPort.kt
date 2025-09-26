@@ -7,9 +7,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.await
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import org.khronos.webgl.Uint8Array
-import org.khronos.webgl.get
-import org.khronos.webgl.set
 
 
 /**

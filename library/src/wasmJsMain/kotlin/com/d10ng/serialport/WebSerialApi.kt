@@ -2,7 +2,6 @@
 
 package com.d10ng.serialport
 
-import org.khronos.webgl.Uint8Array
 import kotlin.js.Promise
 
 /**
@@ -61,4 +60,11 @@ external interface WritableStreamDefaultWriter: JsAny {
     fun write(data: Uint8Array): Promise<JsAny>
     fun releaseLock()
     fun close(): Promise<JsAny>
+}
+
+external class Uint8Array: JsAny {
+    constructor(length: Int)
+    val length: Int
+    operator fun get(index: Int): Byte
+    operator fun set(index: Int, value: Byte)
 }

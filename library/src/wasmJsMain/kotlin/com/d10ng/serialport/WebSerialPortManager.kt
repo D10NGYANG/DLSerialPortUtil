@@ -1,7 +1,6 @@
 package com.d10ng.serialport
 
 import kotlinx.coroutines.await
-import kotlin.js.Promise
 
 /**
  * Web串口管理器 (WASM-JS)

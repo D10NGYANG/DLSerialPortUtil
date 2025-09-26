@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalWasmDsl::class)
-
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -25,6 +23,7 @@ kotlin {
         browser()
         binaries.library()
     }
+    @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
         browser()
         binaries.library()
@@ -55,10 +54,6 @@ kotlin {
         jvmMain.dependencies {
             // 串口通讯
             api(libs.serialport.jvm)
-        }
-        wasmJsMain.dependencies {
-            // Web API支持
-            implementation("org.jetbrains.kotlinx:kotlinx-browser:0.5.0")
         }
     }
 }
