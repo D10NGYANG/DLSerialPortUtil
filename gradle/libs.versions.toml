@@ -17,6 +17,7 @@ jetbrains-androidx-lifecycle = "2.9.4"
 junit = "4.13.2"
 kotlin = "2.2.20"
 kotlinx-coroutines = "1.10.2"
+kotlinx-datetime = "0.7.1"
 serialport-android = "2.1.5"
 serialport-android-usb = "3.9.0"
 serialport-jvm = "2.11.2"
@@ -45,6 +46,7 @@ junit = { module = "junit:junit", version.ref = "junit" }
 kotlinx-coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 serialport-android = { module = "com.licheedev:android-serialport", version.ref = "serialport-android" }
 serialport-android-usb = { module = "com.github.mik3y:usb-serial-for-android", version.ref = "serialport-android-usb" }
 serialport-jvm = { module = "com.fazecast:jSerialComm", version.ref = "serialport-jvm" }

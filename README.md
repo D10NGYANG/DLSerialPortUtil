@@ -3,7 +3,7 @@
 Kotlin Multiplatform 串口通讯库。
 
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-blueviolet?logo=kotlin&logoColor=white)](#)
-[![Latest](https://img.shields.io/badge/version-0.3.2-blue)](#)
+[![Latest](https://img.shields.io/badge/version-0.4.0-blue)](#)
 [![GitHub stars](https://img.shields.io/github/stars/D10NGYANG/DLSerialPortUtil?logo=github)](https://github.com/D10NGYANG/DLSerialPortUtil/stargazers)
 
 **在线demo测试：**[https://d10ngyang.github.io/DLSerialPortUtil/](https://d10ngyang.github.io/DLSerialPortUtil/)
@@ -23,17 +23,17 @@ Kotlin Multiplatform 串口通讯库。
 - ![JVM](https://img.shields.io/badge/JVM%20Windows%2FLinux%2FmacOS-✅-black?logo=java)
 - ![Linux x64/arm64](https://img.shields.io/badge/Linux%20x64%2Farm64-✅-black?logo=linux)
 - ![macOS x64/arm64](https://img.shields.io/badge/macOS%20x64%2Farm64-✅-black?logo=apple)
-- ![JavaScript](https://img.shields.io/badge/JavaScript%20Web%20Serial-✅-black?logo=google-chrome)
+- ![JavaScript/WasmJs](https://img.shields.io/badge/JavaScript%2FWasmJs%20Web%20Serial-✅-black?logo=google-chrome)
 
 ### 平台支持矩阵
 
-| 平台                       | KMP Target           | 串口类型/实现                | 主要特性/说明                                                                                                                   |
-|--------------------------|----------------------|------------------------|---------------------------------------------------------------------------------------------------------------------------|
-| Android                  | android              | 机内串口（/dev/tty*）、USB 串口 | 自动初始化（AndroidX Startup），USB 权限申请与拔出监听；默认 `getPlatformSerialPortManager()` 返回机内串口管理器；USB 请使用 `AndroidUsbSerialPortManager` |
-| JVM（Windows/Linux/macOS） | jvm                  | jSerialComm            | 标准串口名与流式读写；跨桌面系统可用                                                                                                        |
-| Linux                    | linuxX64, linuxArm64 | POSIX                  | 典型设备：`/dev/ttyS0`、`/dev/ttyUSB0` 等                                                                                        |
-| macOS                    | macosX64, macosArm64 | POSIX                  | 典型设备：`/dev/tty.*`、`/dev/cu.*` 等                                                                                           |
-| Web（Browser）             | js（browser）          | Web Serial API         | 需 HTTPS（或 localhost）与用户手势触发；可用 `WebSerialPortManager.isSupported()` 检查支持                                                  |
+| 平台                       | KMP Target                  | 串口类型/实现                | 主要特性/说明                                                                                                                   |
+|--------------------------|-----------------------------|------------------------|---------------------------------------------------------------------------------------------------------------------------|
+| Android                  | android                     | 机内串口（/dev/tty*）、USB 串口 | 自动初始化（AndroidX Startup），USB 权限申请与拔出监听；默认 `getPlatformSerialPortManager()` 返回机内串口管理器；USB 请使用 `AndroidUsbSerialPortManager` |
+| JVM（Windows/Linux/macOS） | jvm                         | jSerialComm            | 标准串口名与流式读写；跨桌面系统可用                                                                                                        |
+| Linux                    | linuxX64, linuxArm64        | POSIX                  | 典型设备：`/dev/ttyS0`、`/dev/ttyUSB0` 等                                                                                        |
+| macOS                    | macosX64, macosArm64        | POSIX                  | 典型设备：`/dev/tty.*`、`/dev/cu.*` 等                                                                                           |
+| Web（Browser）             | js（browser），wasmJs（browser） | Web Serial API         | 需 HTTPS（或 localhost）与用户手势触发；可用 `WebSerialPortManager.isSupported()` 检查支持                                                  |
 
 ## 安装与集成
 
@@ -67,7 +67,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.3.2")
+                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.4.0")
             }
         }
     }
@@ -84,7 +84,7 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 // 日志库（用于控制输出等级）
-                implementation("com.github.D10NGYANG:DLLogUtil:0.1.0")
+                implementation("com.github.D10NGYANG:DLLogUtil:0.1.1")
             }
         }
     }
@@ -211,8 +211,8 @@ suspend fun demo() {
 ## Demo 示例
 本仓库提供多平台示例以帮助你快速集成：
 - `androidDemo/`：Android App 示例
-- `desktopDemo/`：Compose Desktop 示例（JVM）
-- `jsDemo/`：浏览器端示例
-- `macosDemo/`：macOS 示例
+- `composeDemo/`：Compose Multiplatform 示例： Desktop（JVM）+ Web（js/wasmJs）
+- `jsDemo/`：浏览器端H5示例
+- `macosDemo/`：macOS 终端命令行程序示例
 
 你可以参考这些模块的 `build.gradle.kts` 与源码，了解如何在不同平台中添加依赖并调用库 API。
