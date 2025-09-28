@@ -35,6 +35,6 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
-include(":androidDemo", ":desktopDemo", ":jsDemo", ":macosDemo", ":library")
+include(":androidDemo", ":composeDemo", ":desktopDemo", ":jsDemo", ":macosDemo", ":library")
 project(":library").name = "DLSerialPortUtil"
  

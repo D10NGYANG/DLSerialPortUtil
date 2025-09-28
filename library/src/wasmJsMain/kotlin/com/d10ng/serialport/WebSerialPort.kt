@@ -92,7 +92,6 @@ class WebSerialPort(
                 uint8Array[index] = byte
             }
             writer!!.write(uint8Array).await<JsAny>()
-            writer!!.releaseLock()
             true
         }.onFailure { exception ->
             log.w { "write fail: ${exception.message}"}
@@ -102,9 +101,7 @@ class WebSerialPort(
     override fun close() {
         runCatching { readJob?.cancel() }
         runCatching { writer?.releaseLock() }
-        runCatching { writer?.close() }
         runCatching { reader?.releaseLock() }
-        runCatching { reader?.cancel() }
         runCatching { sp?.close() }
         readJob = null
         sp = null

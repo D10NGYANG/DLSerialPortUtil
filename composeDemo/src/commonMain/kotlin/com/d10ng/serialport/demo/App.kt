@@ -49,24 +49,34 @@ import androidx.compose.ui.unit.dp
 import com.d10ng.serialport.BaseSerialPort
 import com.d10ng.serialport.BaudRate
 import com.d10ng.serialport.DataBits
-import com.d10ng.serialport.JvmSerialPortManager
 import com.d10ng.serialport.Parity
 import com.d10ng.serialport.SerialPortConfig
 import com.d10ng.serialport.SerialPortInfo
 import com.d10ng.serialport.StopBits
+import com.d10ng.serialport.getPlatformSerialPortManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.format
+import kotlinx.datetime.format.FormatStringsInDatetimeFormats
+import kotlinx.datetime.format.byUnicodePattern
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 
 private enum class MsgType { SYSTEM, SENT, RECEIVED }
 private data class Msg(val time: String, val content: String, val type: MsgType)
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalTime::class,
+    FormatStringsInDatetimeFormats::class
+)
 @Composable
 fun App() {
     MaterialTheme {
-        val scope = rememberCoroutineScope { Dispatchers.IO }
+        val scope = rememberCoroutineScope { Dispatchers.Default }
 
         // 串口与配置状态
         var ports by remember { mutableStateOf<List<SerialPortInfo>>(emptyList()) }
@@ -87,28 +97,33 @@ fun App() {
         var input by remember { mutableStateOf("") }
         val listState = rememberLazyListState()
 
-        fun addMsg(content: String, type: MsgType) {
-            val ts = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss.SSS"))
-            messages.add(Msg(ts, content, type))
+        val addMsg: (String, MsgType) -> Unit = remember {
+            { content, type ->
+                val ts = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                    .format(LocalDateTime.Format { byUnicodePattern("HH:mm:ss.SSS") })
+                messages.add(Msg(ts, content, type))
+            }
         }
 
-        fun refreshPorts() {
-            scope.launch {
-                runCatching { JvmSerialPortManager.listPorts() }
-                    .onSuccess {
-                        ports = it
-                        if (selectedPort?.id !in it.map { p -> p.id }) {
-                            selectedPort = it.firstOrNull()
+        val refreshPorts: () -> Unit = remember {
+            {
+                scope.launch {
+                    runCatching { getPlatformSerialPortManager().listPorts() }
+                        .onSuccess {
+                            ports = it
+                            if (selectedPort?.id !in it.map { p -> p.id }) {
+                                selectedPort = it.firstOrNull()
+                            }
+                            if (it.isEmpty()) addMsg("未发现可用串口", MsgType.SYSTEM)
                         }
-                        if (it.isEmpty()) addMsg("未发现可用串口", MsgType.SYSTEM)
-                    }
-                    .onFailure { e -> addMsg("获取串口列表失败: ${e.message}", MsgType.SYSTEM) }
+                        .onFailure { e -> addMsg("获取串口列表失败: ${e.message}", MsgType.SYSTEM) }
+                }
             }
         }
 
         LaunchedEffect(Unit) {
             refreshPorts()
-            addMsg("桌面环境就绪，可选择串口并连接进行通讯", MsgType.SYSTEM)
+            addMsg("环境准备就绪，可选择串口并连接进行通讯", MsgType.SYSTEM)
         }
 
         // 监听串口状态与数据
@@ -125,8 +140,7 @@ fun App() {
             }
             launch {
                 p.outputDataFlow.collect { data ->
-                    val text = kotlin.runCatching { String(data, Charsets.UTF_8) }
-                        .getOrElse { data.decodeToString() }
+                    val text = data.decodeToString()
                     addMsg(text, MsgType.RECEIVED)
                 }
             }
@@ -348,9 +362,8 @@ fun App() {
                                 scope.launch {
                                     connecting = true
                                     runCatching {
-                                        val cfg =
-                                            SerialPortConfig(baudRate, dataBits, parity, stopBits)
-                                        val p = JvmSerialPortManager.open(target, cfg)
+                                        val cfg = SerialPortConfig(baudRate, dataBits, parity, stopBits)
+                                        val p = getPlatformSerialPortManager().open(target, cfg)
                                         port = p
                                         addMsg("串口连接成功", MsgType.SYSTEM)
                                     }.onFailure { e ->
@@ -460,10 +473,9 @@ fun App() {
                                     return@Button
                                 }
                                 scope.launch {
-                                    val ok =
-                                        runCatching { p.write((msg + "\r\n").toByteArray(Charsets.UTF_8)) }.getOrDefault(
-                                            false
-                                        )
+                                    val ok = runCatching {
+                                        p.write((msg + "\r\n").encodeToByteArray())
+                                    }.getOrDefault(false)
                                     if (ok) {
                                         addMsg(msg, MsgType.SENT)
                                         input = ""
