@@ -25,6 +25,8 @@ import platform.posix.CS8
 import platform.posix.CSIZE
 import platform.posix.CSTOPB
 import platform.posix.EINTR
+import platform.posix.F_SETFL
+import platform.posix.TCIOFLUSH
 import platform.posix.O_NOCTTY
 import platform.posix.O_NONBLOCK
 import platform.posix.O_RDWR
@@ -40,6 +42,8 @@ import platform.posix.close
 import platform.posix.errno
 import platform.posix.open
 import platform.posix.read
+import platform.posix.tcflush
+import platform.posix.fcntl
 import platform.posix.tcgetattr
 import platform.posix.tcsetattr
 import platform.posix.termios
@@ -74,6 +78,8 @@ class PosixSerialPort(
             // 打开串口设备
             fd = open(info.id, O_RDWR or O_NOCTTY or O_NONBLOCK)
             if (fd < 0) throw Exception("Failed to open serial port: ${info.id}")
+            // 清除非阻塞标志，改为阻塞读写以配合 VMIN/VTIME
+            fcntl(fd, F_SETFL, 0)
             
             // 配置串口参数
             configureSerialPort()
@@ -148,6 +154,8 @@ class PosixSerialPort(
             if (tcsetattr(fd, TCSANOW, tty.ptr) != 0) {
                 throw Exception("Failed to set serial port attributes")
             }
+            // 清空输入输出缓冲区，避免残留数据影响
+            tcflush(fd, TCIOFLUSH)
         }
     }
 

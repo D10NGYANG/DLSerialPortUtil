@@ -3,7 +3,7 @@
 Kotlin Multiplatform 串口通讯库。
 
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-blueviolet?logo=kotlin&logoColor=white)](#)
-[![Latest](https://img.shields.io/badge/version-0.4.0-blue)](#)
+[![Latest](https://img.shields.io/badge/version-0.4.1-blue)](#)
 [![GitHub stars](https://img.shields.io/github/stars/D10NGYANG/DLSerialPortUtil?logo=github)](https://github.com/D10NGYANG/DLSerialPortUtil/stargazers)
 
 **在线demo测试：**[https://d10ngyang.github.io/DLSerialPortUtil/](https://d10ngyang.github.io/DLSerialPortUtil/)
@@ -67,7 +67,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.4.0")
+                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.4.1")
             }
         }
     }
@@ -214,5 +214,6 @@ suspend fun demo() {
 - `composeDemo/`：Compose Multiplatform 示例： Desktop（JVM）+ Web（js/wasmJs）
 - `jsDemo/`：浏览器端H5示例
 - `macosDemo/`：macOS 终端命令行程序示例
+- `linuxDemo/`：Linux 终端命令行程序示例
 
 你可以参考这些模块的 `build.gradle.kts` 与源码，了解如何在不同平台中添加依赖并调用库 API。
