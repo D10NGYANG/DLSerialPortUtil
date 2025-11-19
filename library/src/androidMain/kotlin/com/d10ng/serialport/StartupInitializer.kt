@@ -45,7 +45,7 @@ internal class StartupInitializer : Initializer<Unit> {
                         }
                         device?: return
                         val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
-                        log.i { "${device.deviceName} usb permission request result: $granted" }
+                        logger.i { "${device.deviceName} usb permission request result: $granted" }
                         usbPermissionResultFlow.tryEmit(device.deviceName to granted)
                     }
                     UsbManager.ACTION_USB_DEVICE_DETACHED -> {
@@ -57,7 +57,7 @@ internal class StartupInitializer : Initializer<Unit> {
                             intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
                         }
                         device?: return
-                        log.i { "${device.deviceName} usb device detached" }
+                        logger.i { "${device.deviceName} usb device detached" }
                         usbDeviceDetachedFlow.tryEmit(device.deviceName)
                     }
                 }

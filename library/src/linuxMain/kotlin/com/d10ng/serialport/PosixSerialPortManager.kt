@@ -12,7 +12,9 @@ import platform.posix.*
 object PosixSerialPortManager: ISerialPortManager {
 
     override fun isSupported(): Boolean {
-        return true
+        val supported = true
+        logger.i { "isSupported: $supported" }
+        return supported
     }
 
     override suspend fun listPorts(): List<SerialPortInfo> {
@@ -35,20 +37,25 @@ object PosixSerialPortManager: ISerialPortManager {
         }
         closedir(dir)
 
-        return ports.sortedBy { it.id }
+        val list = ports.sortedBy { it.id }
+        logger.i { "listPorts found: ${list.size}" }
+        return list
     }
 
     override suspend fun open(
         portInfo: SerialPortInfo,
         config: SerialPortConfig
     ): BaseSerialPort {
+        logger.i { "open request: ${portInfo.id}" }
         return PosixSerialPort(portInfo, config).apply { open() }
     }
 
     /**
      * 检查串口设备是否可用
+     * @param devicePath 设备路径
+     * @return Boolean
      */
-    private fun isSerialPortAvailable(devicePath: String): Boolean {
+    fun isSerialPortAvailable(devicePath: String): Boolean {
         memScoped {
             val st = alloc<stat>()
             if (stat(devicePath, st.ptr) != 0) return false

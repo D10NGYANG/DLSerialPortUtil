@@ -27,9 +27,13 @@ class WebSerialPort(
     private var readJob: Job? = null
 
     override suspend fun open() {
-        if (sp != null) return
+        if (sp != null) {
+            logger.w { "Serial port [${info.id}] already opened" }
+            return
+        }
 
         runCatching {
+            logger.d { "open serial port [${info.id}], config: $config" }
             // 获取串口对象
             sp = (info.obj as? SerialPort) ?: throw Exception("Serial port object is null")
 
@@ -52,7 +56,7 @@ class WebSerialPort(
 
             openStateFlow.value = true
         }.onFailure { exception ->
-            log.w { "open fail: ${exception.message}" }
+            logger.w { "open fail: ${exception.message}" }
             sp = null
             reader = null
             writer = null
@@ -73,10 +77,12 @@ class WebSerialPort(
                         for (i in 0 until uint8Array.length) {
                             byteArray[i] = uint8Array[i]
                         }
+                        logger.d { "RX HEX: ${byteArray.toHexString(HexFormat.UpperCase)}" }
+                        logger.d { "RX STR: ${byteArray.decodeToString()}" }
                         outputDataFlow.tryEmit(byteArray)
                     }
                 }.onFailure { exception ->
-                    log.w { "read fail: ${exception.message}" }
+                    logger.w { "read fail: ${exception.message}" }
                     break@loop
                 }
             }
@@ -87,6 +93,8 @@ class WebSerialPort(
     override suspend fun write(data: ByteArray): Boolean {
         return runCatching {
             // 直接将ByteArray转换为Uint8Array
+            logger.d { "TX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
+            logger.d { "TX STR: ${data.decodeToString()}" }
             val uint8Array = Uint8Array(data.size)
             data.forEachIndexed { index, byte ->
                 uint8Array[index] = byte
@@ -94,11 +102,12 @@ class WebSerialPort(
             writer!!.write(uint8Array).await<JsAny>()
             true
         }.onFailure { exception ->
-            log.w { "write fail: ${exception.message}"}
+            logger.w { "write fail: ${exception.message}"}
         }.getOrDefault(false)
     }
 
     override fun close() {
+        logger.d { "close serial port [${info.id}]" }
         runCatching { readJob?.cancel() }
         runCatching { writer?.releaseLock() }
         runCatching { reader?.releaseLock() }

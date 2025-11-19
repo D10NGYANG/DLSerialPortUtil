@@ -71,9 +71,13 @@ class PosixSerialPort(
     private var readJob: Job? = null
 
     override suspend fun open() {
-        if (fd != -1) return
+        if (fd != -1) {
+            logger.w { "Serial port [${info.id}] already opened" }
+            return
+        }
         
         runCatching {
+            logger.d { "open serial port [${info.id}], config: $config" }
             // 打开串口设备
             fd = open(info.id, O_RDWR or O_NOCTTY or O_NONBLOCK)
             if (fd < 0) throw Exception("Failed to open serial port: ${info.id}")
@@ -86,7 +90,7 @@ class PosixSerialPort(
             
             openStateFlow.value = true
         }.onFailure { exception ->
-            log.w { "open fail: ${exception.message}" }
+            logger.w { "open fail: ${exception.message}" }
             if (fd != -1) {
                 close(fd)
                 fd = -1
@@ -167,8 +171,10 @@ class PosixSerialPort(
                     }.toInt()
                     when {
                         bytesRead > 0 -> {
-                            // 复制前 bytesRead 个字节发出
-                            outputDataFlow.tryEmit(buffer.copyOf(bytesRead))
+                            val data = buffer.copyOf(bytesRead)
+                            logger.d { "RX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
+                            logger.d { "RX STR: ${data.decodeToString()}" }
+                            outputDataFlow.tryEmit(data)
                         }
                         bytesRead == 0 -> {
                             // 仅在 VMIN=0, VTIME>0 时可能出现超时返回
@@ -182,7 +188,7 @@ class PosixSerialPort(
                         }
                     }
                 }.onFailure { exception ->
-                    log.w { "read fail: ${exception.message}" }
+                    logger.w { "read fail: ${exception.message}" }
                     break@loop
                 }
             }
@@ -193,16 +199,19 @@ class PosixSerialPort(
     override suspend fun write(data: ByteArray): Boolean {
         if (fd == -1) return false
         return runCatching {
+            logger.d { "TX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
+            logger.d { "TX STR: ${data.decodeToString()}" }
             data.usePinned { pinned ->
                 val bytesWritten = write(fd, pinned.addressOf(0), data.size.toULong()).toInt()
                 bytesWritten == data.size
             }
         }.onFailure { exception ->
-            log.w { "write fail: ${exception.message}"}
+            logger.w { "write fail: ${exception.message}"}
         }.getOrDefault(false)
     }
 
     override fun close() {
+        logger.d { "close serial port [${info.id}]" }
         runCatching { readJob?.cancel() }
         if (fd != -1) {
             runCatching { close(fd) }

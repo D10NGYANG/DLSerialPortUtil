@@ -1,5 +1,6 @@
 package com.d10ng.serialport
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
@@ -43,9 +44,14 @@ class AndroidUsbSerialPort(
         }
     }
 
+    @SuppressLint("ObsoleteSdkInt")
     override suspend fun open() {
-        if (sp != null) return
+        if (sp != null) {
+            logger.w { "Serial port [${info.id}] already opened" }
+            return
+        }
         val driver = info.obj as UsbSerialDriver
+        logger.d { "open serial port [${info.id}], config: $config" }
         // 检查权限
         if (!usbManager.hasPermission(driver.device)) {
             withContext(Dispatchers.Main) {
@@ -80,7 +86,7 @@ class AndroidUsbSerialPort(
             startRead()
             openStateFlow.value = true
         }.onFailure { exception ->
-            log.w { "open fail: ${exception.message}" }
+            logger.w { "open fail: ${exception.message}" }
             sp = null
             throw exception
         }
@@ -93,12 +99,15 @@ class AndroidUsbSerialPort(
                 runCatching {
                     val size = sp!!.read(buffer, buffer.size, READ_WAIT_MILLIS)
                     if (size > 0) {
-                        outputDataFlow.tryEmit(buffer.copyOfRange(0, size))
+                        val data = buffer.copyOfRange(0, size)
+                        logger.d { "RX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
+                        logger.d { "RX STR: ${data.decodeToString()}" }
+                        outputDataFlow.tryEmit(data)
                     } else if (size == -1) {
                         break@loop
                     }
                 }.onFailure { exception ->
-                    log.w { "read fail: ${exception.message}" }
+                    logger.w { "read fail: ${exception.message}" }
                     break@loop
                 }
             }
@@ -108,14 +117,17 @@ class AndroidUsbSerialPort(
 
     override suspend fun write(data: ByteArray): Boolean {
         return runCatching {
+            logger.d { "TX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
+            logger.d { "TX STR: ${data.decodeToString()}" }
             sp!!.write(data, WRITE_WAIT_MILLIS)
             true
         }.onFailure { exception ->
-            log.w { "write fail: ${exception.message}"}
+            logger.w { "write fail: ${exception.message}"}
         }.getOrDefault(false)
     }
 
     override fun close() {
+        logger.d { "close serial port [${info.id}]" }
         runCatching { readJob?.cancel() }
         runCatching { sp?.close() }
         readJob = null

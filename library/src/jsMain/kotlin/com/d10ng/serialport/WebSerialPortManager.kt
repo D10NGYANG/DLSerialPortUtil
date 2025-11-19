@@ -14,7 +14,9 @@ object WebSerialPortManager : ISerialPortManager {
      * 检查浏览器是否支持Web Serial API
      */
     override fun isSupported(): Boolean {
-        return js("typeof navigator !== 'undefined' && 'serial' in navigator") as Boolean
+        val supported = js("typeof navigator !== 'undefined' && 'serial' in navigator") as Boolean
+        logger.i { "isSupported: $supported" }
+        return supported
     }
     
     /**
@@ -26,7 +28,7 @@ object WebSerialPortManager : ISerialPortManager {
             return emptyList()
         }
         
-        return runCatching {
+        val result = runCatching {
             val port = (js("navigator.serial.requestPort()") as Promise<dynamic>).await()
             val info = port.getInfo()
             val vendorId = (info.usbVendorId as? Int)?.toString(16)?.uppercase() ?: "Unknown"
@@ -41,12 +43,15 @@ object WebSerialPortManager : ISerialPortManager {
                 )
             )
         }.getOrDefault(emptyList())
+        logger.i { "listPorts found: ${result.size}" }
+        return result
     }
     
     override suspend fun open(
         portInfo: SerialPortInfo,
         config: SerialPortConfig
     ): BaseSerialPort {
+        logger.i { "open request: ${portInfo.id}" }
         return WebSerialPort(portInfo, config).apply { open() }
     }
 }

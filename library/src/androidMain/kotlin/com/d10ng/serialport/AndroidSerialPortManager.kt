@@ -10,7 +10,9 @@ import java.io.File
 object AndroidSerialPortManager: ISerialPortManager {
 
     override fun isSupported(): Boolean {
-        return true
+        val supported = true
+        logger.i { "isSupported: $supported" }
+        return supported
     }
 
     override suspend fun listPorts(): List<SerialPortInfo> {
@@ -19,7 +21,7 @@ object AndroidSerialPortManager: ISerialPortManager {
             return emptyList()
         }
 
-        return devDir.listFiles()
+        val list = devDir.listFiles()
             ?.filter { file ->
                 file.canRead() && file.canWrite() && file.name.startsWith("tty")
             }
@@ -27,12 +29,15 @@ object AndroidSerialPortManager: ISerialPortManager {
             ?.sorted()
             ?.map { SerialPortInfo(it) }
             ?: emptyList()
+        logger.i { "listPorts found: ${list.size}" }
+        return list
     }
 
     override suspend fun open(
         portInfo: SerialPortInfo,
         config: SerialPortConfig
     ): AndroidSerialPort {
+        logger.i { "open request: ${portInfo.id}" }
         return AndroidSerialPort(portInfo, config).apply { open() }
     }
 }

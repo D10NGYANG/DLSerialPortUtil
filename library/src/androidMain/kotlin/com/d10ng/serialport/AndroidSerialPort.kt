@@ -29,11 +29,15 @@ class AndroidSerialPort(
     private var readJob: Job? = null
 
     override suspend fun open() {
-        if (sp != null) return
+        if (sp != null) {
+            logger.w { "Serial port [${info.id}] already opened" }
+            return
+        }
         val file = File(info.id)
         // 提权
         if (!file.canRead() || !file.canWrite()) chmod777(file)
         runCatching {
+            logger.d { "open serial port [${info.id}], config: $config" }
             // 打开串口
             sp = SerialPort(
                 file,
@@ -45,7 +49,7 @@ class AndroidSerialPort(
             startRead()
             openStateFlow.value = true
         }.onFailure { exception ->
-            log.w { "open fail: ${exception.message}" }
+            logger.w { "open fail: ${exception.message}" }
             sp = null
             throw exception
         }
@@ -57,7 +61,10 @@ class AndroidSerialPort(
      * @return Boolean
      */
     private fun chmod777(device: File): Boolean {
-        if (!device.exists()) return false
+        if (!device.exists()) {
+            logger.w { "device [${device.absolutePath}] not exists" }
+            return false
+        }
         if (device.canRead() && device.canWrite() && device.canExecute()) return true
         return runCatching {
             val su = Runtime.getRuntime().exec("/system/bin/su")
@@ -65,7 +72,7 @@ class AndroidSerialPort(
             su.outputStream.write(cmd.toByteArray())
             0 == su.waitFor() && device.canRead() && device.canWrite() && device.canExecute()
         }.onFailure { exception ->
-            log.w { "chmod 777 ${device.absolutePath} fail: ${exception.message}" }
+            logger.w { "chmod 777 ${device.absolutePath} fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 
@@ -76,12 +83,16 @@ class AndroidSerialPort(
                 runCatching {
                     val size = sp!!.inputStream.read(buffer)
                     if (size > 0) {
-                        outputDataFlow.tryEmit(buffer.copyOfRange(0, size))
+                        val data = buffer.copyOfRange(0, size)
+                        logger.d { "RX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
+                        logger.d { "RX STR: ${data.decodeToString()}" }
+                        outputDataFlow.tryEmit(data)
                     } else if (size == -1) {
+                        logger.w { "read fail: stream closed" }
                         break@loop
                     }
                 }.onFailure { exception ->
-                    log.w { "read fail: ${exception.message}" }
+                    logger.w { "read fail: ${exception.message}" }
                     break@loop
                 }
             }
@@ -91,17 +102,20 @@ class AndroidSerialPort(
 
     override suspend fun write(data: ByteArray): Boolean {
         return runCatching {
+            logger.d { "TX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
+            logger.d { "TX STR: ${data.decodeToString()}" }
             sp!!.outputStream.use { os ->
                 os.write(data)
                 os.flush()
             }
             true
         }.onFailure { exception ->
-            log.w { "write fail: ${exception.message}"}
+            logger.w { "write fail: ${exception.message}"}
         }.getOrDefault(false)
     }
 
     override fun close() {
+        logger.d { "close serial port [${info.id}]" }
         runCatching { readJob?.cancel() }
         runCatching { sp?.tryClose() }
         readJob = null

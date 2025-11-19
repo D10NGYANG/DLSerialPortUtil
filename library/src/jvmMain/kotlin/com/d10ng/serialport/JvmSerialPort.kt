@@ -27,8 +27,12 @@ class JvmSerialPort(
     private var readJob: Job? = null
 
     override suspend fun open() {
-        if (sp != null) return
+        if (sp != null) {
+            logger.w { "Serial port [${info.id}] already opened" }
+            return
+        }
         runCatching {
+            logger.d { "open serial port [${info.id}], config: $config" }
             // 选择串口
             val port = info.obj as SerialPort
 
@@ -52,7 +56,7 @@ class JvmSerialPort(
             startRead()
             openStateFlow.value = true
         }.onFailure { exception ->
-            log.w { "open fail: ${exception.message}" }
+            logger.w { "open fail: ${exception.message}" }
             sp = null
             throw exception
         }
@@ -65,12 +69,15 @@ class JvmSerialPort(
                 runCatching {
                     val size = sp!!.inputStream.read(buffer)
                     if (size > 0) {
-                        outputDataFlow.tryEmit(buffer.copyOfRange(0, size))
+                        val data = buffer.copyOfRange(0, size)
+                        logger.d { "RX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
+                        logger.d { "RX STR: ${data.decodeToString()}" }
+                        outputDataFlow.tryEmit(data)
                     } else if (size == -1) {
                         break@loop
                     }
                 }.onFailure { exception ->
-                    log.w { "read fail: ${exception.message}" }
+                    logger.w { "read fail: ${exception.message}" }
                     break@loop
                 }
             }
@@ -80,17 +87,20 @@ class JvmSerialPort(
 
     override suspend fun write(data: ByteArray): Boolean {
         return runCatching {
+            logger.d { "TX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
+            logger.d { "TX STR: ${data.decodeToString()}" }
             sp!!.outputStream.use { os ->
                 os.write(data)
                 os.flush()
             }
             true
         }.onFailure { exception ->
-            log.w { "write fail: ${exception.message}"}
+            logger.w { "write fail: ${exception.message}"}
         }.getOrDefault(false)
     }
 
     override fun close() {
+        logger.d { "close serial port [${info.id}]" }
         runCatching { readJob?.cancel() }
         runCatching { sp?.closePort() }
         readJob = null

@@ -10,11 +10,13 @@ import com.hoho.android.usbserial.driver.UsbSerialProber
 object AndroidUsbSerialPortManager: ISerialPortManager {
 
     override fun isSupported(): Boolean {
-        return true
+        val supported = true
+        logger.i { "isSupported: $supported" }
+        return supported
     }
 
     override suspend fun listPorts(): List<SerialPortInfo> {
-        return UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
+        val list = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
             .map { driver ->
                 val mName = driver.device.manufacturerName ?: "Unknown"
                 val pName = driver.device.productName ?: "Unknown"
@@ -22,12 +24,15 @@ object AndroidUsbSerialPortManager: ISerialPortManager {
                 val pId = driver.device.productId.toString(16).uppercase()
                 SerialPortInfo(driver.device.deviceName, "$mName $pName (VID:$vId, PID:$pId)", driver)
             }
+        logger.i { "listPorts found: ${list.size}" }
+        return list
     }
 
     override suspend fun open(
         portInfo: SerialPortInfo,
         config: SerialPortConfig
     ): BaseSerialPort {
+        logger.i { "open request: ${portInfo.id}" }
         return AndroidUsbSerialPort(portInfo, config).apply { open() }
     }
 }
