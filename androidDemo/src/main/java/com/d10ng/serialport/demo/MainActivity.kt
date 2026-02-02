@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.rememberNavController
+import com.d10ng.log.LogLevel
+import com.d10ng.serialport.SerialPortManagerLog
 import com.d10ng.serialport.demo.navigation.AppNavigation
 import com.d10ng.serialport.demo.ui.theme.DLSerialPortUtilTheme
 import com.d10ng.serialport.demo.viewmodel.SerialPortViewModel
@@ -24,6 +26,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        SerialPortManagerLog.miniLevel = LogLevel.VERBOSE
         setContent {
             DLSerialPortUtilTheme {
                 Surface(

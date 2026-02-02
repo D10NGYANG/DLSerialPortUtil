@@ -63,6 +63,7 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    implementation(libs.androidx.compose.material.icons.extended)
 
     // lifecycle
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -73,4 +74,6 @@ dependencies {
 
     // serialport
     implementation(project(":DLSerialPortUtil"))
+    // 日志库
+    implementation(libs.dl.log)
 }

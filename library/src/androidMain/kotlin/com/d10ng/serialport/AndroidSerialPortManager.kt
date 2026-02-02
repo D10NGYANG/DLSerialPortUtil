@@ -18,11 +18,13 @@ object AndroidSerialPortManager: ISerialPortManager {
     override suspend fun listPorts(): List<SerialPortInfo> {
         val devDir = File("/dev/")
         if (!devDir.exists() || !devDir.isDirectory) {
+            logger.w { "listPorts failed: /dev exists: ${devDir.exists()}, isDirectory: ${devDir.isDirectory}" }
             return emptyList()
         }
 
         val list = devDir.listFiles()
             ?.filter { file ->
+                logger.d { "listPorts found: ${file.absolutePath}, canRead: ${file.canRead()}, canWrite: ${file.canWrite()}" }
                 file.canRead() && file.canWrite() && file.name.startsWith("tty")
             }
             ?.map { it.absolutePath }
