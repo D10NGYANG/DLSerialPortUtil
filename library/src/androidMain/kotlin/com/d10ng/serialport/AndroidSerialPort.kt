@@ -104,7 +104,7 @@ class AndroidSerialPort(
         return runCatching {
             logger.d { "TX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
             logger.d { "TX STR: ${data.decodeToString()}" }
-            sp!!.outputStream.use { os ->
+            sp!!.outputStream.let { os ->
                 os.write(data)
                 os.flush()
             }
