@@ -27,6 +27,7 @@ external interface SerialPort : JsAny {
     fun close(): Promise<JsAny>
     fun getInfo(): WebSerialPortInfo
     fun open(options: JsAny): Promise<JsAny>
+    fun setSignals(signals: JsAny): Promise<JsAny>
 }
 
 external interface WebSerialPortInfo : JsAny {
@@ -36,6 +37,9 @@ external interface WebSerialPortInfo : JsAny {
 
 fun createJsSerialOptions(baudRate: Int, dataBits: Int, parity: String, stopBits: Int): JsAny =
     js("({ baudRate: baudRate, dataBits: dataBits, parity: parity, stopBits: stopBits })")
+
+fun createJsSerialOutputSignals(dataTerminalReady: Boolean): JsAny =
+    js("({ dataTerminalReady: dataTerminalReady })")
 
 external interface ReadableStream: JsAny {
     fun getReader(): ReadableStreamDefaultReader

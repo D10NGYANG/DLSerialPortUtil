@@ -3,7 +3,7 @@
 Kotlin Multiplatform 串口通讯库。
 
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-blueviolet?logo=kotlin&logoColor=white)](#)
-[![Latest](https://img.shields.io/badge/version-0.4.3-blue)](#)
+[![Latest](https://img.shields.io/badge/version-0.5.0-blue)](#)
 [![GitHub stars](https://img.shields.io/github/stars/D10NGYANG/DLSerialPortUtil?logo=github)](https://github.com/D10NGYANG/DLSerialPortUtil/stargazers)
 
 **在线demo测试：**[https://d10ngyang.github.io/DLSerialPortUtil/](https://d10ngyang.github.io/DLSerialPortUtil/)
@@ -11,6 +11,7 @@ Kotlin Multiplatform 串口通讯库。
 ## 特性
 - Kotlin Multiplatform：在 `commonMain` 使用统一 API，平台差异由库内部适配
 - 统一的串口管理器与串口对象：列出设备、打开、读写、关闭
+- 支持 DTR（Data Terminal Ready）控制，并可在运行时查询当前串口是否支持
 - 串口配置统一：波特率、数据位、校验位、停止位等使用枚举类型确保安全
 - 基于协程的异步数据流：提供 `outputDataFlow` 与 `openStateFlow`
 - Android：支持机内串口（/dev/tty*）与 USB 串口（USB CDC 等），内置 AndroidX Startup 自动初始化、USB 权限申请与拔出监听
@@ -27,13 +28,14 @@ Kotlin Multiplatform 串口通讯库。
 
 ### 平台支持矩阵
 
-| 平台                       | KMP Target                  | 串口类型/实现                | 主要特性/说明                                                                                                                   |
-|--------------------------|-----------------------------|------------------------|---------------------------------------------------------------------------------------------------------------------------|
-| Android                  | android                     | 机内串口（/dev/tty*）、USB 串口 | 自动初始化（AndroidX Startup），USB 权限申请与拔出监听；默认 `getPlatformSerialPortManager()` 返回机内串口管理器；USB 请使用 `AndroidUsbSerialPortManager` |
-| JVM（Windows/Linux/macOS） | jvm                         | jSerialComm            | 标准串口名与流式读写；跨桌面系统可用                                                                                                        |
-| Linux                    | linuxX64, linuxArm64        | POSIX                  | 典型设备：`/dev/ttyS0`、`/dev/ttyUSB0` 等                                                                                        |
-| macOS                    | macosX64, macosArm64        | POSIX                  | 典型设备：`/dev/tty.*`、`/dev/cu.*` 等                                                                                           |
-| Web（Browser）             | js（browser），wasmJs（browser） | Web Serial API         | 需 HTTPS（或 localhost）与用户手势触发；可用 `WebSerialPortManager.isSupported()` 检查支持                                                  |
+| 平台                       | KMP Target                  | 串口类型/实现                | DTR | 主要特性/说明                                                                                                                   |
+|--------------------------|-----------------------------|------------------------|-----|---------------------------------------------------------------------------------------------------------------------------|
+| Android                  | android                     | 机内串口（/dev/tty*）       | 不支持 | 默认 `getPlatformSerialPortManager()` 返回机内串口管理器；当前底层依赖未暴露 DTR 控制接口 |
+| Android                  | android                     | USB 串口                 | 视设备而定 | 使用 `AndroidUsbSerialPortManager`；支持 USB 权限申请与拔出监听，可通过 `isDtrSupported` 查询具体驱动能力 |
+| JVM（Windows/Linux/macOS） | jvm                         | jSerialComm            | 支持 | 标准串口名与流式读写；跨桌面系统可用 |
+| Linux                    | linuxX64, linuxArm64        | POSIX                  | 支持 | 典型设备：`/dev/ttyS0`、`/dev/ttyUSB0` 等 |
+| macOS                    | macosX64, macosArm64        | POSIX                  | 支持 | 典型设备：`/dev/tty.*`、`/dev/cu.*` 等 |
+| Web（Browser）             | js（browser），wasmJs（browser） | Web Serial API         | 支持 | 需 HTTPS（或 localhost）与用户手势触发；实际操作结果取决于浏览器、系统和设备 |
 
 ## 安装与集成
 
@@ -67,7 +69,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.4.3")
+                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.5.0")
             }
         }
     }
@@ -162,6 +164,12 @@ suspend fun demo() {
     // 写入数据
     sp.write("AT\r\n".encodeToByteArray())
 
+    // 控制 DTR。应在串口打开后查询并调用
+    if (sp.isDtrSupported) {
+        val success = sp.setDtr(true)
+        println("Set DTR: $success")
+    }
+
     // 使用完毕关闭
     sp.close()
 }
@@ -175,6 +183,8 @@ suspend fun demo() {
 - 串口对象：`BaseSerialPort`
   - `val outputDataFlow: MutableSharedFlow<ByteArray>` 输出数据流（异步）
   - `val openStateFlow: MutableStateFlow<Boolean>` 串口是否处于开启状态
+  - `val isDtrSupported: Boolean` 当前串口实现或设备是否支持 DTR 控制
+  - `suspend fun setDtr(enabled: Boolean): Boolean` 设置 DTR，成功返回 `true`
   - `suspend fun write(data: ByteArray): Boolean` 写数据
   - `fun close()` 关闭串口
 - 串口配置：`SerialPortConfig`
@@ -191,7 +201,9 @@ suspend fun demo() {
 
 ### Android
 - 机内串口（/dev/tty*）：库会在打开前尝试 `chmod 777` 以提升设备权限。不同设备权限策略可能不同，部分设备可能需要 root 或厂商授权；请根据实际情况评估
+- 机内串口当前不支持 DTR，`isDtrSupported` 为 `false`，调用 `setDtr()` 返回 `false`
 - USB 串口：库内置 AndroidX Startup（Manifest Provider）自动初始化并注册 USB 权限与拔出广播；在首次访问设备时会自动弹出权限申请对话框，无需手动在 Manifest 配置接收器
+- USB 串口的 DTR 支持取决于 USB 转串口芯片及其驱动；打开串口后可通过 `isDtrSupported` 检查
 - 依赖：库已在内部依赖 `androidx.startup:startup-runtime` 以及常用 USB 串口驱动库，无需单独引入
 
 ### Web（浏览器）
@@ -200,6 +212,7 @@ suspend fun demo() {
   - 需要用户手势触发设备选择（例如点击按钮后调用）
 - `listPorts()` 在 Web 平台会触发设备选择弹窗并返回用户授权的设备；用户取消授权时返回空列表；
 - 可通过 `WebSerialPortManager.isSupported()` 检查浏览器是否支持；
+- DTR 基于 Web Serial API 的 `setSignals()` 实现；即使 API 可用，浏览器、操作系统或设备拒绝操作时 `setDtr()` 仍会返回 `false`
 
 ### JVM 桌面 / Linux / macOS
 - JVM 桌面通过 jSerialComm 访问系统串口，通常端口名如下：
@@ -207,6 +220,7 @@ suspend fun demo() {
   - Linux 示例：`/dev/ttyS0`、`/dev/ttyUSB0`
   - macOS 示例：`/dev/tty.*`、`/dev/cu.*`
 - Linux 与 macOS 的 `linuxX64/linuxArm64/macosX64/macosArm64` 目标使用 POSIX 接口实现，行为与系统串口一致
+- JVM、Linux 与 macOS 支持 DTR 控制；底层驱动不支持或串口未打开时，`setDtr()` 返回 `false`
 
 ## Demo 示例
 本仓库提供多平台示例以帮助你快速集成：

@@ -21,6 +21,8 @@ class JvmSerialPort(
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var sp: SerialPort? = null
 
+    override val isDtrSupported: Boolean = true
+
     // 缓存数据
     private val buffer = ByteArray(2048)
     // 循环读取数据任务
@@ -96,6 +98,15 @@ class JvmSerialPort(
             true
         }.onFailure { exception ->
             logger.w { "write fail: ${exception.message}"}
+        }.getOrDefault(false)
+    }
+
+    override suspend fun setDtr(enabled: Boolean): Boolean {
+        val port = sp ?: return false
+        return runCatching {
+            if (enabled) port.setDTR() else port.clearDTR()
+        }.onFailure { exception ->
+            logger.w { "set DTR to $enabled fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 

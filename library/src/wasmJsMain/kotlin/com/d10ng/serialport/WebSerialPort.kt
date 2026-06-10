@@ -26,6 +26,8 @@ class WebSerialPort(
     private var writer: WritableStreamDefaultWriter? = null
     private var readJob: Job? = null
 
+    override val isDtrSupported: Boolean = true
+
     override suspend fun open() {
         if (sp != null) {
             logger.w { "Serial port [${info.id}] already opened" }
@@ -103,6 +105,16 @@ class WebSerialPort(
             true
         }.onFailure { exception ->
             logger.w { "write fail: ${exception.message}"}
+        }.getOrDefault(false)
+    }
+
+    override suspend fun setDtr(enabled: Boolean): Boolean {
+        val port = sp ?: return false
+        return runCatching {
+            port.setSignals(createJsSerialOutputSignals(enabled)).await<JsAny>()
+            true
+        }.onFailure { exception ->
+            logger.w { "set DTR to $enabled fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 

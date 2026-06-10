@@ -25,6 +25,12 @@ class WebSerialPort(
     private var reader: dynamic = null
     private var writer: dynamic = null
     private var readJob: Job? = null
+
+    override val isDtrSupported: Boolean
+        get() {
+            val port = sp ?: info.obj
+            return port != null && jsTypeOf(port.setSignals) == "function"
+        }
     
     override suspend fun open() {
         if (sp != null) {
@@ -101,6 +107,18 @@ class WebSerialPort(
             true
         }.onFailure { exception ->
             logger.w { "write fail: ${exception.message}"}
+        }.getOrDefault(false)
+    }
+
+    override suspend fun setDtr(enabled: Boolean): Boolean {
+        if (sp == null || !isDtrSupported) return false
+        return runCatching {
+            val signals = js("{}")
+            signals.dataTerminalReady = enabled
+            (sp.setSignals(signals) as Promise<Unit>).await()
+            true
+        }.onFailure { exception ->
+            logger.w { "set DTR to $enabled fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 

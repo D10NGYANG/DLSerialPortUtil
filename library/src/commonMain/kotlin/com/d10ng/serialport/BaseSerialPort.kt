@@ -23,9 +23,21 @@ abstract class BaseSerialPort(
     val openStateFlow = MutableStateFlow(false)
 
     /**
+     * 当前串口实现是否支持 DTR 控制
+     */
+    abstract val isDtrSupported: Boolean
+
+    /**
      * 打开串口
      */
     abstract suspend fun open()
+
+    /**
+     * 设置 DTR 信号
+     * @param enabled Boolean 是否启用
+     * @return Boolean 是否设置成功
+     */
+    abstract suspend fun setDtr(enabled: Boolean): Boolean
 
     /**
      * 写数据

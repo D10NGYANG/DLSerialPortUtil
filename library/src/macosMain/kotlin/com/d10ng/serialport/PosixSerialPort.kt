@@ -1,12 +1,14 @@
 package com.d10ng.serialport
 
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.IntVar
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.set
 import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.value
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -34,6 +36,9 @@ import platform.posix.O_RDWR
 import platform.posix.PARENB
 import platform.posix.PARODD
 import platform.posix.TCSANOW
+import platform.posix.TIOCMBIC
+import platform.posix.TIOCMBIS
+import platform.posix.TIOCM_DTR
 import platform.posix.VMIN
 import platform.posix.VTIME
 import platform.posix.cfmakeraw
@@ -41,6 +46,7 @@ import platform.posix.cfsetispeed
 import platform.posix.cfsetospeed
 import platform.posix.close
 import platform.posix.errno
+import platform.posix.ioctl
 import platform.posix.open
 import platform.posix.read
 import platform.posix.tcgetattr
@@ -63,6 +69,8 @@ class PosixSerialPort(
     
     // 串口文件描述符
     private var fd: Int = -1
+
+    override val isDtrSupported: Boolean = true
     
     // 缓存数据
     private val buffer = ByteArray(2048)
@@ -207,6 +215,19 @@ class PosixSerialPort(
             }
         }.onFailure { exception ->
             logger.w { "write fail: ${exception.message}"}
+        }.getOrDefault(false)
+    }
+
+    override suspend fun setDtr(enabled: Boolean): Boolean {
+        if (fd == -1) return false
+        return runCatching {
+            memScoped {
+                val flag = alloc<IntVar>()
+                flag.value = TIOCM_DTR
+                ioctl(fd, if (enabled) TIOCMBIS else TIOCMBIC, flag.ptr) == 0
+            }
+        }.onFailure { exception ->
+            logger.w { "set DTR to $enabled fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 

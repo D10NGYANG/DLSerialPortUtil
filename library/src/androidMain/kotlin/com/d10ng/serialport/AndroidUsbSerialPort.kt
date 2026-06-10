@@ -36,6 +36,14 @@ class AndroidUsbSerialPort(
     private var sp: UsbSerialPort? = null
     private var readJob: Job? = null
 
+    override val isDtrSupported: Boolean
+        get() {
+            val port = sp ?: (info.obj as? UsbSerialDriver)?.ports?.firstOrNull()
+            return runCatching {
+                UsbSerialPort.ControlLine.DTR in port!!.supportedControlLines
+            }.getOrDefault(false)
+        }
+
     init {
         scope.launch {
             StartupInitializer.usbDeviceDetachedFlow.filter { it == info.id }.collect {
@@ -123,6 +131,17 @@ class AndroidUsbSerialPort(
             true
         }.onFailure { exception ->
             logger.w { "write fail: ${exception.message}"}
+        }.getOrDefault(false)
+    }
+
+    override suspend fun setDtr(enabled: Boolean): Boolean {
+        val port = sp ?: return false
+        if (!isDtrSupported) return false
+        return runCatching {
+            port.setDTR(enabled)
+            true
+        }.onFailure { exception ->
+            logger.w { "set DTR to $enabled fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 
