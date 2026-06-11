@@ -41,6 +41,9 @@ fun createJsSerialOptions(baudRate: Int, dataBits: Int, parity: String, stopBits
 fun createJsSerialOutputSignals(dataTerminalReady: Boolean): JsAny =
     js("({ dataTerminalReady: dataTerminalReady })")
 
+fun createJsSerialRtsOutputSignals(requestToSend: Boolean): JsAny =
+    js("({ requestToSend: requestToSend })")
+
 external interface ReadableStream: JsAny {
     fun getReader(): ReadableStreamDefaultReader
 }

@@ -44,6 +44,14 @@ class AndroidUsbSerialPort(
             }.getOrDefault(false)
         }
 
+    override val isRtsSupported: Boolean
+        get() {
+            val port = sp ?: (info.obj as? UsbSerialDriver)?.ports?.firstOrNull()
+            return runCatching {
+                UsbSerialPort.ControlLine.RTS in port!!.supportedControlLines
+            }.getOrDefault(false)
+        }
+
     init {
         scope.launch {
             StartupInitializer.usbDeviceDetachedFlow.filter { it == info.id }.collect {
@@ -142,6 +150,17 @@ class AndroidUsbSerialPort(
             true
         }.onFailure { exception ->
             logger.w { "set DTR to $enabled fail: ${exception.message}" }
+        }.getOrDefault(false)
+    }
+
+    override suspend fun setRts(enabled: Boolean): Boolean {
+        val port = sp ?: return false
+        if (!isRtsSupported) return false
+        return runCatching {
+            port.setRTS(enabled)
+            true
+        }.onFailure { exception ->
+            logger.w { "set RTS to $enabled fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 

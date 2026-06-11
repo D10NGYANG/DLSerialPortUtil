@@ -28,6 +28,11 @@ abstract class BaseSerialPort(
     abstract val isDtrSupported: Boolean
 
     /**
+     * 当前串口实现是否支持 RTS 控制
+     */
+    abstract val isRtsSupported: Boolean
+
+    /**
      * 打开串口
      */
     abstract suspend fun open()
@@ -38,6 +43,13 @@ abstract class BaseSerialPort(
      * @return Boolean 是否设置成功
      */
     abstract suspend fun setDtr(enabled: Boolean): Boolean
+
+    /**
+     * 设置 RTS 信号
+     * @param enabled Boolean 是否启用
+     * @return Boolean 是否设置成功
+     */
+    abstract suspend fun setRts(enabled: Boolean): Boolean
 
     /**
      * 写数据

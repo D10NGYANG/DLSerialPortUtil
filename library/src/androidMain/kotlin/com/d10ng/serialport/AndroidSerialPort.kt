@@ -24,6 +24,7 @@ class AndroidSerialPort(
     private var sp: SerialPort? = null
 
     override val isDtrSupported: Boolean = false
+    override val isRtsSupported: Boolean = false
 
     // 缓存数据
     private val buffer = ByteArray(2048)
@@ -118,6 +119,11 @@ class AndroidSerialPort(
 
     override suspend fun setDtr(enabled: Boolean): Boolean {
         logger.w { "DTR is not supported by Android built-in serial port [${info.id}]" }
+        return false
+    }
+
+    override suspend fun setRts(enabled: Boolean): Boolean {
+        logger.w { "RTS is not supported by Android built-in serial port [${info.id}]" }
         return false
     }
 

@@ -39,6 +39,7 @@ import platform.posix.TCSANOW
 import platform.posix.TIOCMBIC
 import platform.posix.TIOCMBIS
 import platform.posix.TIOCM_DTR
+import platform.posix.TIOCM_RTS
 import platform.posix.VMIN
 import platform.posix.VTIME
 import platform.posix.cfmakeraw
@@ -71,6 +72,7 @@ class PosixSerialPort(
     private var fd: Int = -1
 
     override val isDtrSupported: Boolean = true
+    override val isRtsSupported: Boolean = true
     
     // 缓存数据
     private val buffer = ByteArray(2048)
@@ -228,6 +230,19 @@ class PosixSerialPort(
             }
         }.onFailure { exception ->
             logger.w { "set DTR to $enabled fail: ${exception.message}" }
+        }.getOrDefault(false)
+    }
+
+    override suspend fun setRts(enabled: Boolean): Boolean {
+        if (fd == -1) return false
+        return runCatching {
+            memScoped {
+                val flag = alloc<IntVar>()
+                flag.value = TIOCM_RTS
+                ioctl(fd, if (enabled) TIOCMBIS else TIOCMBIC, flag.ptr) == 0
+            }
+        }.onFailure { exception ->
+            logger.w { "set RTS to $enabled fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 

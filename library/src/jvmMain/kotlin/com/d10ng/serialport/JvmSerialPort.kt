@@ -22,6 +22,7 @@ class JvmSerialPort(
     private var sp: SerialPort? = null
 
     override val isDtrSupported: Boolean = true
+    override val isRtsSupported: Boolean = true
 
     // 缓存数据
     private val buffer = ByteArray(2048)
@@ -107,6 +108,15 @@ class JvmSerialPort(
             if (enabled) port.setDTR() else port.clearDTR()
         }.onFailure { exception ->
             logger.w { "set DTR to $enabled fail: ${exception.message}" }
+        }.getOrDefault(false)
+    }
+
+    override suspend fun setRts(enabled: Boolean): Boolean {
+        val port = sp ?: return false
+        return runCatching {
+            if (enabled) port.setRTS() else port.clearRTS()
+        }.onFailure { exception ->
+            logger.w { "set RTS to $enabled fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 

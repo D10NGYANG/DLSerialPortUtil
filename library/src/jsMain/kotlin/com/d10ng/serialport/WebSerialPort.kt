@@ -31,6 +31,12 @@ class WebSerialPort(
             val port = sp ?: info.obj
             return port != null && jsTypeOf(port.setSignals) == "function"
         }
+
+    override val isRtsSupported: Boolean
+        get() {
+            val port = sp ?: info.obj
+            return port != null && jsTypeOf(port.setSignals) == "function"
+        }
     
     override suspend fun open() {
         if (sp != null) {
@@ -119,6 +125,18 @@ class WebSerialPort(
             true
         }.onFailure { exception ->
             logger.w { "set DTR to $enabled fail: ${exception.message}" }
+        }.getOrDefault(false)
+    }
+
+    override suspend fun setRts(enabled: Boolean): Boolean {
+        if (sp == null || !isRtsSupported) return false
+        return runCatching {
+            val signals = js("{}")
+            signals.requestToSend = enabled
+            (sp.setSignals(signals) as Promise<Unit>).await()
+            true
+        }.onFailure { exception ->
+            logger.w { "set RTS to $enabled fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 

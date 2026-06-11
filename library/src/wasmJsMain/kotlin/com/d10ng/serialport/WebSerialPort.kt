@@ -27,6 +27,7 @@ class WebSerialPort(
     private var readJob: Job? = null
 
     override val isDtrSupported: Boolean = true
+    override val isRtsSupported: Boolean = true
 
     override suspend fun open() {
         if (sp != null) {
@@ -115,6 +116,16 @@ class WebSerialPort(
             true
         }.onFailure { exception ->
             logger.w { "set DTR to $enabled fail: ${exception.message}" }
+        }.getOrDefault(false)
+    }
+
+    override suspend fun setRts(enabled: Boolean): Boolean {
+        val port = sp ?: return false
+        return runCatching {
+            port.setSignals(createJsSerialRtsOutputSignals(enabled)).await<JsAny>()
+            true
+        }.onFailure { exception ->
+            logger.w { "set RTS to $enabled fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 
