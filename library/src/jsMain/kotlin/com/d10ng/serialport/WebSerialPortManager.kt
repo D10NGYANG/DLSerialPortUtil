@@ -1,6 +1,8 @@
 package com.d10ng.serialport
 
 import kotlinx.coroutines.await
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlin.js.Promise
 
 /**
@@ -9,7 +11,38 @@ import kotlin.js.Promise
  * @Date 2025/9/19 13:43
  */
 object WebSerialPortManager : ISerialPortManager {
-    
+
+    private val identityRegistry = SerialPortIdentityRegistry("web-serial")
+    private val connectionStateRegistry = SerialPortConnectionStateRegistry()
+    private val _portEventFlow = MutableSharedFlow<SerialPortEvent>(extraBufferCapacity = 8)
+    override val portEventFlow = _portEventFlow.asSharedFlow()
+
+    private val connectHandler: (dynamic) -> Unit = { event ->
+        val port = event.target
+        runCatching {
+            if (connectionStateRegistry.markConnected(port as Any, portLogicalKey(port))) {
+                _portEventFlow.tryEmit(SerialPortEvent.Connected(toPortInfo(port)))
+            }
+        }.onFailure { logger.w { "handle serial connect event fail: ${it.message}" } }
+    }
+    private val disconnectHandler: (dynamic) -> Unit = { event ->
+        val port = event.target
+        runCatching {
+            if (connectionStateRegistry.markDisconnected(port as Any, portLogicalKey(port))) {
+                val info = identityRegistry.remove(port as Any) ?: toPortInfo(port)
+                _portEventFlow.tryEmit(SerialPortEvent.Disconnected(info))
+            }
+        }.onFailure { logger.w { "handle serial disconnect event fail: ${it.message}" } }
+    }
+
+    init {
+        if (isSupported()) {
+            val serial = js("navigator.serial")
+            serial.addEventListener("connect", connectHandler)
+            serial.addEventListener("disconnect", disconnectHandler)
+        }
+    }
+
     /**
      * 检查浏览器是否支持Web Serial API
      */
@@ -20,38 +53,50 @@ object WebSerialPortManager : ISerialPortManager {
     }
     
     /**
-     * 获取已授权的串口列表
-     * 注意：Web Serial API需要用户明确授权才能访问设备
+     * 获取当前站点已经授权的串口列表，不触发浏览器设备选择器。
      */
     override suspend fun listPorts(): List<SerialPortInfo> {
         if (!isSupported()) {
             return emptyList()
         }
-        
-        val result = runCatching {
-            val port = (js("navigator.serial.requestPort()") as Promise<dynamic>).await()
-            val info = port.getInfo()
-            val vendorId = (info.usbVendorId as? Int)?.toString(16)?.uppercase() ?: "Unknown"
-            val productId = (info.usbProductId as? Int)?.toString(16)?.uppercase() ?: "Unknown"
-            val description = "Serial Device (VID:$vendorId, PID:$productId)"
 
-            listOf(
-                SerialPortInfo(
-                    id = port.toString(),
-                    description = description,
-                    obj = port
-                )
-            )
-        }.getOrDefault(emptyList())
+        val ports = (js("navigator.serial.getPorts()") as Promise<Array<dynamic>>).await()
+        val result = ports.map(::toPortInfo)
         logger.i { "listPorts found: ${result.size}" }
         return result
     }
-    
+
+    /**
+     * 请求用户选择并授权一个串口。必须直接由点击等用户手势触发。
+     */
+    override suspend fun requestPort(): SerialPortInfo? {
+        if (!isSupported()) return null
+        return try {
+            val port = (js("navigator.serial.requestPort()") as Promise<dynamic>).await()
+            toPortInfo(port)
+        } catch (error: Throwable) {
+            if (error.asDynamic().name == "NotFoundError") null else throw error
+        }
+    }
+
     override suspend fun open(
         portInfo: SerialPortInfo,
         config: SerialPortConfig
     ): BaseSerialPort {
         logger.i { "open request: ${portInfo.id}" }
         return WebSerialPort(portInfo, config).apply { open() }
+    }
+
+    private fun toPortInfo(port: dynamic): SerialPortInfo {
+        val info = port.getInfo()
+        val vendorId = (info.usbVendorId as? Int)?.toString(16)?.uppercase() ?: "Unknown"
+        val productId = (info.usbProductId as? Int)?.toString(16)?.uppercase() ?: "Unknown"
+        val description = "Serial Device (VID:$vendorId, PID:$productId)"
+        return identityRegistry.getOrCreate(port as Any, description)
+    }
+
+    private fun portLogicalKey(port: dynamic): String {
+        val info = port.getInfo()
+        return "usb:${info.usbVendorId ?: "unknown"}:${info.usbProductId ?: "unknown"}"
     }
 }

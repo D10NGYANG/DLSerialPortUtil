@@ -51,6 +51,7 @@ import com.d10ng.serialport.BaudRate
 import com.d10ng.serialport.DataBits
 import com.d10ng.serialport.Parity
 import com.d10ng.serialport.SerialPortConfig
+import com.d10ng.serialport.SerialPortEvent
 import com.d10ng.serialport.SerialPortInfo
 import com.d10ng.serialport.StopBits
 import com.d10ng.serialport.getPlatformSerialPortManager
@@ -77,6 +78,7 @@ private data class Msg(val time: String, val content: String, val type: MsgType)
 fun App() {
     MaterialTheme {
         val scope = rememberCoroutineScope { Dispatchers.Default }
+        val manager = remember { getPlatformSerialPortManager() }
 
         // 串口与配置状态
         var ports by remember { mutableStateOf<List<SerialPortInfo>>(emptyList()) }
@@ -108,7 +110,7 @@ fun App() {
         val refreshPorts: () -> Unit = remember {
             {
                 scope.launch {
-                    runCatching { getPlatformSerialPortManager().listPorts() }
+                    runCatching { manager.listPorts() }
                         .onSuccess {
                             ports = it
                             if (selectedPort?.id !in it.map { p -> p.id }) {
@@ -121,9 +123,54 @@ fun App() {
             }
         }
 
+        val requestPort: () -> Unit = remember {
+            {
+                scope.launch {
+                    runCatching {
+                        val requestedPort = manager.requestPort() ?: return@runCatching null
+                        requestedPort to manager.listPorts()
+                    }.onSuccess { result ->
+                        if (result != null) {
+                            val (requestedPort, latestPorts) = result
+                            ports = latestPorts
+                            selectedPort = latestPorts.firstOrNull { it.id == requestedPort.id }
+                                ?: requestedPort
+                            addMsg(
+                                "已授权串口设备: ${requestedPort.description ?: requestedPort.id}",
+                                MsgType.SYSTEM
+                            )
+                        }
+                    }
+                        .onFailure { e -> addMsg("授权串口失败: ${e.message}", MsgType.SYSTEM) }
+                }
+            }
+        }
+
         LaunchedEffect(Unit) {
             refreshPorts()
             addMsg("环境准备就绪，可选择串口并连接进行通讯", MsgType.SYSTEM)
+        }
+
+        LaunchedEffect(manager) {
+            manager.portEventFlow.collect { event ->
+                when (event) {
+                    is SerialPortEvent.Connected -> {
+                        refreshPorts()
+                        addMsg(
+                            "检测到串口设备接入: ${event.port.description ?: event.port.id}",
+                            MsgType.SYSTEM
+                        )
+                    }
+                    is SerialPortEvent.Disconnected -> {
+                        ports = ports.filterNot { it.id == event.port.id }
+                        if (selectedPort?.id == event.port.id) selectedPort = null
+                        addMsg(
+                            "检测到串口设备拔出: ${event.port.description ?: event.port.id}",
+                            MsgType.SYSTEM
+                        )
+                    }
+                }
+            }
         }
 
         // 监听串口状态与数据
@@ -212,6 +259,12 @@ fun App() {
                         onClick = { refreshPorts() },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("刷新") }
+
+                    Spacer(Modifier.size(8.dp))
+                    OutlinedButton(
+                        onClick = { requestPort() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("授权新设备（Web）") }
 
                     Spacer(Modifier.size(16.dp))
 
@@ -349,10 +402,21 @@ fun App() {
                     Button(
                         onClick = {
                             if (connected) {
-                                runCatching { port?.close() }
+                                val currentPort = port
                                 port = null
-                                connected = false
-                                addMsg("已断开串口连接", MsgType.SYSTEM)
+                                scope.launch {
+                                    connecting = true
+                                    runCatching { currentPort?.closeAndAwait() }
+                                        .onSuccess {
+                                            connected = false
+                                            addMsg("已断开串口连接", MsgType.SYSTEM)
+                                        }
+                                        .onFailure { e ->
+                                            connected = false
+                                            addMsg("关闭串口失败: ${e.message}", MsgType.SYSTEM)
+                                        }
+                                    connecting = false
+                                }
                             } else {
                                 val target = selectedPort
                                 if (target == null) {
@@ -363,7 +427,7 @@ fun App() {
                                     connecting = true
                                     runCatching {
                                         val cfg = SerialPortConfig(baudRate, dataBits, parity, stopBits)
-                                        val p = getPlatformSerialPortManager().open(target, cfg)
+                                        val p = manager.open(target, cfg)
                                         port = p
                                         addMsg("串口连接成功", MsgType.SYSTEM)
                                     }.onFailure { e ->

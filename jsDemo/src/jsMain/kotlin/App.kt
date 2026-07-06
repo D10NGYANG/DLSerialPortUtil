@@ -10,6 +10,7 @@ import com.d10ng.serialport.BaudRate
 import com.d10ng.serialport.DataBits
 import com.d10ng.serialport.Parity
 import com.d10ng.serialport.SerialPortConfig
+import com.d10ng.serialport.SerialPortEvent
 import com.d10ng.serialport.SerialPortInfo
 import com.d10ng.serialport.SerialPortManagerLog
 import com.d10ng.serialport.StopBits
@@ -52,9 +53,30 @@ private fun initializeApp() {
     
     // 初始化UI事件
     setupEventListeners()
+    observePortEvents()
     
     // 显示欢迎消息
     addSystemMessage("浏览器支持Web Serial API，可以开始使用串口通讯功能")
+}
+
+private fun observePortEvents() {
+    scope.launch {
+        WebSerialPortManager.portEventFlow.collect { event ->
+            when (event) {
+                is SerialPortEvent.Connected -> {
+                    addSystemMessage("检测到串口设备接入: ${event.port.description ?: event.port.id}")
+                }
+                is SerialPortEvent.Disconnected -> {
+                    if (selectedPortInfo?.id == event.port.id) {
+                        selectedPortInfo = null
+                        getElementById<HTMLDivElement>("selectedPort")?.textContent = "尚未选择串口设备"
+                        updateConnectionStatus(false)
+                    }
+                    addSystemMessage("检测到串口设备拔出: ${event.port.description ?: event.port.id}")
+                }
+            }
+        }
+    }
 }
 
 private fun setupEventListeners() {
@@ -85,7 +107,7 @@ private fun selectSerialPort() {
     scope.launch {
         try {
             // 请求用户选择串口设备
-            val port = WebSerialPortManager.listPorts().firstOrNull()
+            val port = WebSerialPortManager.requestPort()
             if (port != null) {
                 selectedPortInfo = port
                 updateSelectedPortDisplay(port)
@@ -164,10 +186,21 @@ private fun connectPort() {
 }
 
 private fun disconnectPort() {
-    currentPort?.close()
+    val port = currentPort ?: return
     currentPort = null
-    updateConnectionStatus(false)
-    addSystemMessage("已断开串口连接")
+    scope.launch {
+        try {
+            setConnecting(true)
+            port.closeAndAwait()
+            updateConnectionStatus(false)
+            addSystemMessage("已断开串口连接")
+        } catch (e: Exception) {
+            showError("关闭串口失败: ${e.message}")
+            updateConnectionStatus(false)
+        } finally {
+            setConnecting(false)
+        }
+    }
 }
 
 private fun getSerialPortConfig(): SerialPortConfig {

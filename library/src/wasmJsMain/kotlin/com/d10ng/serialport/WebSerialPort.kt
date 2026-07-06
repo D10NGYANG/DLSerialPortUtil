@@ -1,10 +1,14 @@
 package com.d10ng.serialport
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.await
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -25,11 +29,19 @@ class WebSerialPort(
     private var reader: ReadableStreamDefaultReader? = null
     private var writer: WritableStreamDefaultWriter? = null
     private var readJob: Job? = null
+    private var closeJob: Deferred<Unit>? = null
 
     override val isDtrSupported: Boolean = true
     override val isRtsSupported: Boolean = true
 
     override suspend fun open() {
+        closeJob?.let { pendingClose ->
+            try {
+                pendingClose.await()
+            } finally {
+                if (closeJob === pendingClose) closeJob = null
+            }
+        }
         if (sp != null) {
             logger.w { "Serial port [${info.id}] already opened" }
             return
@@ -60,9 +72,11 @@ class WebSerialPort(
             openStateFlow.value = true
         }.onFailure { exception ->
             logger.w { "open fail: ${exception.message}" }
-            sp = null
-            reader = null
-            writer = null
+            runCatching { closeAndAwait() }
+                .onFailure { closeError ->
+                    logger.w { "cleanup serial port [${info.id}] after open failure: ${closeError.message}" }
+                }
+            closeJob = null
             throw exception
         }
     }
@@ -130,15 +144,60 @@ class WebSerialPort(
     }
 
     override fun close() {
-        logger.d { "close serial port [${info.id}]" }
-        runCatching { readJob?.cancel() }
-        runCatching { writer?.releaseLock() }
-        runCatching { reader?.releaseLock() }
-        runCatching { sp?.close() }
-        readJob = null
-        sp = null
-        reader = null
-        writer = null
+        beginClose()
+    }
+
+    override suspend fun closeAndAwait() {
+        beginClose().await()
+    }
+
+    private fun beginClose(): Deferred<Unit> {
+        closeJob?.let { return it }
         openStateFlow.value = false
+        return scope.async(start = CoroutineStart.LAZY) {
+            closeInternal()
+        }.also { job ->
+            closeJob = job
+            job.invokeOnCompletion { error ->
+                if (error != null) {
+                    logger.w { "close serial port [${info.id}] fail: ${error.message}" }
+                }
+            }
+            job.start()
+        }
+    }
+
+    private suspend fun closeInternal() {
+        logger.d { "close serial port [${info.id}]" }
+        val port = sp
+        val currentReader = reader
+        val currentWriter = writer
+        val currentReadJob = readJob
+
+        try {
+            runCatching { currentReader?.cancel()?.await<JsAny>() }
+                .onFailure { error ->
+                    logger.w { "cancel serial port reader [${info.id}] fail: ${error.message}" }
+                }
+            runCatching { currentReadJob?.cancelAndJoin() }
+                .onFailure { error ->
+                    logger.w { "stop serial port reader [${info.id}] fail: ${error.message}" }
+                }
+            runCatching { currentWriter?.releaseLock() }
+                .onFailure { error ->
+                    logger.w { "release serial port writer [${info.id}] fail: ${error.message}" }
+                }
+            runCatching { currentReader?.releaseLock() }
+                .onFailure { error ->
+                    logger.w { "release serial port reader [${info.id}] fail: ${error.message}" }
+                }
+            port?.close()?.await<JsAny>()
+        } finally {
+            if (sp === port) sp = null
+            if (reader === currentReader) reader = null
+            if (writer === currentWriter) writer = null
+            if (readJob === currentReadJob) readJob = null
+            openStateFlow.value = false
+        }
     }
 }

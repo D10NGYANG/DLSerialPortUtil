@@ -17,7 +17,17 @@ external interface Navigator : JsAny {
 }
 
 external interface Serial : JsAny {
+    fun getPorts(): Promise<JsArray<SerialPort>>
     fun requestPort(): Promise<SerialPort>
+    fun addEventListener(type: String, listener: (event: SerialConnectionEvent) -> Unit)
+    fun removeEventListener(type: String, listener: (event: SerialConnectionEvent) -> Unit)
+}
+
+@JsFun("(serial) => serial.requestPort().catch(error => { if (error?.name === 'NotFoundError') return null; throw error; })")
+external fun requestSerialPortOrNull(serial: Serial): Promise<SerialPort?>
+
+external interface SerialConnectionEvent : JsAny {
+    val target: SerialPort
 }
 
 external interface SerialPort : JsAny {

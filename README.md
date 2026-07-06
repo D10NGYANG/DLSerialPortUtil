@@ -3,7 +3,7 @@
 Kotlin Multiplatform 串口通讯库。
 
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-blueviolet?logo=kotlin&logoColor=white)](#)
-[![Latest](https://img.shields.io/badge/version-0.6.0-blue)](#)
+[![Latest](https://img.shields.io/badge/version-0.6.1-blue)](#)
 [![GitHub stars](https://img.shields.io/github/stars/D10NGYANG/DLSerialPortUtil?logo=github)](https://github.com/D10NGYANG/DLSerialPortUtil/stargazers)
 
 **在线demo测试：**[https://d10ngyang.github.io/DLSerialPortUtil/](https://d10ngyang.github.io/DLSerialPortUtil/)
@@ -69,7 +69,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.6.0")
+                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.6.1")
             }
         }
     }
@@ -176,8 +176,20 @@ suspend fun demo() {
         println("Set RTS: $success")
     }
 
-    // 使用完毕关闭
-    sp.close()
+    // 使用完毕关闭，并等待底层资源释放后再重连
+    sp.closeAndAwait()
+}
+```
+
+Web 首次授权必须由用户点击等手势直接触发：
+
+```kotlin
+scope.launch {
+    val selected = manager.requestPort() // 用户取消时返回 null
+    if (selected != null) {
+        // requestPort() 返回的 SerialPortInfo 可直接用于 open()
+        println("Selected: ${selected.description ?: selected.id}")
+    }
 }
 ```
 
@@ -185,6 +197,8 @@ suspend fun demo() {
 - 串口管理器：`getPlatformSerialPortManager()` 获取当前平台实现
   - `fun isSupported(): Boolean` 判断当前平台环境是否支持串口通讯
   - `suspend fun listPorts(): List<SerialPortInfo>` 列出串口设备
+  - `suspend fun requestPort(): SerialPortInfo?` 请求用户选择并授权设备；仅 Web 等需要显式授权的平台覆盖
+  - `val portEventFlow: Flow<SerialPortEvent>` 监听设备接入和拔出；不支持的平台为空 Flow
   - `suspend fun open(portInfo: SerialPortInfo, config: SerialPortConfig): BaseSerialPort` 打开串口
 - 串口对象：`BaseSerialPort`
   - `val outputDataFlow: MutableSharedFlow<ByteArray>` 输出数据流（异步）
@@ -194,14 +208,15 @@ suspend fun demo() {
   - `val isRtsSupported: Boolean` 当前串口实现或设备是否支持 RTS 控制
   - `suspend fun setRts(enabled: Boolean): Boolean` 设置 RTS，成功返回 `true`
   - `suspend fun write(data: ByteArray): Boolean` 写数据
-  - `fun close()` 关闭串口
+  - `fun close()` 触发关闭串口；Web 端异步执行
+  - `suspend fun closeAndAwait()` 关闭串口并等待底层资源释放；需要立即重连时优先使用
 - 串口配置：`SerialPortConfig`
   - `baudRate: BaudRate`（如 `V9600`, `V115200` 等）
   - `dataBits: DataBits`（如 `V7`, `V8`）
   - `parity: Parity`（`NONE`, `EVEN`, `ODD`）
   - `stopBits: StopBits`（`V1`, `V2`）
 - 设备信息：`SerialPortInfo`
-  - `id: String` 平台唯一标识（如 `/dev/ttyS0`、`USB Device ID` 或 Web 的对象标识）
+  - `id: String` 平台唯一标识；Web ID 只在当前页面生命周期内有效，设备重新接入后会变化
   - `description: String?` 可读描述
   - `obj: Any?` 平台层对象（供内部使用）
 
@@ -218,9 +233,20 @@ suspend fun demo() {
 - 基于 Web Serial API：
   - 需要 HTTPS（或 `localhost`）环境
   - 需要用户手势触发设备选择（例如点击按钮后调用）
-- `listPorts()` 在 Web 平台会触发设备选择弹窗并返回用户授权的设备；用户取消授权时返回空列表；
+- `listPorts()` 只调用 `navigator.serial.getPorts()` 查询当前站点已经授权的设备，不显示浏览器选择器
+- `requestPort()` 显示浏览器设备选择器，必须由用户手势直接触发；用户取消时返回 `null`，其他异常继续抛出
+- 设备拔出后旧 `SerialPortInfo` 不应复用；监听 `portEventFlow` 或重新调用 `listPorts()` 获取最新对象
+- 库会按端口连接状态过滤浏览器或驱动重复派发的 `connect`/`disconnect`，一次状态变化只进入事件流一次
+- `close()` 保留非挂起兼容接口；需要关闭后立即重连时调用 `closeAndAwait()`
 - 可通过 `WebSerialPortManager.isSupported()` 检查浏览器是否支持；
 - DTR/RTS 基于 Web Serial API 的 `setSignals()` 实现；即使 API 可用，浏览器、操作系统或设备拒绝操作时，对应设置方法仍会返回 `false`
+
+#### 从 0.6.0 升级到 0.6.1
+
+- 将“选择设备”操作从 `listPorts()` 改为 `requestPort()`；刷新列表仍调用 `listPorts()`
+- 用户取消选择时 `requestPort()` 返回 `null`，权限策略或浏览器错误仍需捕获
+- 收到拔出事件后清除当前选中项；重新接入后使用新列表中的 `SerialPortInfo`
+- 断开后立即重连前调用 `closeAndAwait()`，不要复用拔出前保存的平台对象
 
 ### JVM 桌面 / Linux / macOS
 - JVM 桌面通过 jSerialComm 访问系统串口，通常端口名如下：

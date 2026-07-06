@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.github.D10NGYANG"
-version = "0.6.0"
+version = "0.6.1"
 
 kotlin {
     jvmToolchain(8)
@@ -39,6 +39,9 @@ kotlin {
             implementation(libs.kotlinx.coroutines)
             // 日志库
             implementation(libs.dl.log)
+        }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
         }
         androidMain.dependencies {
             implementation(libs.androidx.core.ktx)

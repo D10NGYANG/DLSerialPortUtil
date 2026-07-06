@@ -62,6 +62,15 @@ abstract class BaseSerialPort(
      * 关闭串口
      */
     abstract fun close()
+
+    /**
+     * 关闭串口并等待底层资源释放完成。
+     *
+     * 默认实现兼容同步关闭的平台；Web 等异步关闭平台应覆盖此方法。
+     */
+    open suspend fun closeAndAwait() {
+        close()
+    }
 }
 
 /**
