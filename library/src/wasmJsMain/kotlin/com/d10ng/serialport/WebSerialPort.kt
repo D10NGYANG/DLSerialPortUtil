@@ -96,7 +96,7 @@ class WebSerialPort(
                         }
                         logger.d { "RX HEX: ${byteArray.toHexString(HexFormat.UpperCase)}" }
                         logger.d { "RX STR: ${byteArray.decodeToString()}" }
-                        outputDataFlow.tryEmit(byteArray)
+                        outputDataFlow.emit(byteArray)
                     }
                 }.onFailure { exception ->
                     logger.w { "read fail: ${exception.message}" }

@@ -1,5 +1,6 @@
 package com.d10ng.serialport
 
+import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialProber
 
 /**
@@ -17,12 +18,24 @@ object AndroidUsbSerialPortManager: ISerialPortManager {
 
     override suspend fun listPorts(): List<SerialPortInfo> {
         val list = UsbSerialProber.getDefaultProber().findAllDrivers(usbManager)
-            .map { driver ->
+            .flatMap { driver ->
                 val mName = driver.device.manufacturerName ?: "Unknown"
                 val pName = driver.device.productName ?: "Unknown"
                 val vId = driver.device.vendorId.toString(16).uppercase()
                 val pId = driver.device.productId.toString(16).uppercase()
-                SerialPortInfo(driver.device.deviceName, "$mName $pName (VID:$vId, PID:$pId)", driver)
+                driver.ports.indices.map { portIndex ->
+                    val id = if (driver.ports.size == 1) {
+                        driver.device.deviceName
+                    } else {
+                        "${driver.device.deviceName}#$portIndex"
+                    }
+                    val portDescription = if (driver.ports.size == 1) "" else " Port ${portIndex + 1}"
+                    SerialPortInfo(
+                        id,
+                        "$mName $pName$portDescription (VID:$vId, PID:$pId)",
+                        AndroidUsbSerialPortHandle(driver, portIndex)
+                    )
+                }
             }
         logger.i { "listPorts found: ${list.size}" }
         return list
@@ -36,3 +49,8 @@ object AndroidUsbSerialPortManager: ISerialPortManager {
         return AndroidUsbSerialPort(portInfo, config).apply { open() }
     }
 }
+
+internal data class AndroidUsbSerialPortHandle(
+    val driver: UsbSerialDriver,
+    val portIndex: Int
+)

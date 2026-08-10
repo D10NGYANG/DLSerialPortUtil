@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
  */
 
 internal val ctx by lazy { StartupInitializer.application }
-internal val ACTION_USB_PERMISSION by lazy { "com.d10ng.serialport.USB_PERMISSION" }
+internal const val ACTION_USB_PERMISSION = "com.d10ng.serialport.USB_PERMISSION"
 internal val usbManager by lazy { ctx.getSystemService(Context.USB_SERVICE) as UsbManager }
 
 internal class StartupInitializer : Initializer<Unit> {

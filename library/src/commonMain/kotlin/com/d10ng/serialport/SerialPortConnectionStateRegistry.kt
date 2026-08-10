@@ -10,8 +10,15 @@ import kotlin.time.TimeSource
  */
 internal class SerialPortConnectionStateRegistry(
     private val duplicateWindowMillis: Long = 100L,
-    private val nowMillisProvider: (() -> Long)? = null
+    private val nowMillisProvider: (() -> Long)? = null,
+    private val maxTrackedObjects: Int = 128,
+    private val maxLogicalPorts: Int = 128
 ) {
+
+    init {
+        require(maxTrackedObjects > 0) { "maxTrackedObjects must be positive" }
+        require(maxLogicalPorts > 0) { "maxLogicalPorts must be positive" }
+    }
 
     private data class ObjectState(
         val obj: Any,
@@ -38,6 +45,7 @@ internal class SerialPortConnectionStateRegistry(
         val objectState = objectStates.firstOrNull { it.obj === obj }
         if (objectState?.connected == connected) return false
         if (objectState == null) {
+            if (objectStates.size >= maxTrackedObjects) objectStates.removeAt(0)
             objectStates += ObjectState(obj, connected)
         } else {
             objectState.connected = connected
@@ -50,6 +58,7 @@ internal class SerialPortConnectionStateRegistry(
             now - logicalState.observedAtMillis <= duplicateWindowMillis
 
         if (logicalState == null) {
+            if (logicalPortStates.size >= maxLogicalPorts) logicalPortStates.removeAt(0)
             logicalPortStates += LogicalPortState(logicalPortKey, connected, now)
         } else {
             logicalState.connected = connected

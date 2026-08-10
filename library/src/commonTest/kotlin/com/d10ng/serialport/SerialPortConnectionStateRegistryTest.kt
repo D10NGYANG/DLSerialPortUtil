@@ -69,4 +69,20 @@ class SerialPortConnectionStateRegistryTest {
         now += 101
         assertTrue(registry.markConnected(Any(), "usb:6790:29987"))
     }
+
+    @Test
+    fun oldestObjectStateIsEvictedAtCapacity() {
+        var now = 1_000L
+        val registry = SerialPortConnectionStateRegistry(
+            nowMillisProvider = { now },
+            maxTrackedObjects = 1,
+            maxLogicalPorts = 1
+        )
+        val firstPort = Any()
+
+        assertTrue(registry.markConnected(firstPort, "port-1"))
+        assertTrue(registry.markConnected(Any(), "port-2"))
+        now += 101
+        assertTrue(registry.markConnected(firstPort, "port-1"))
+    }
 }

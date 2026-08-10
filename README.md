@@ -223,9 +223,10 @@ scope.launch {
 ## 各平台使用说明与注意事项
 
 ### Android
-- 机内串口（/dev/tty*）：库会在打开前尝试 `chmod 777` 以提升设备权限。不同设备权限策略可能不同，部分设备可能需要 root 或厂商授权；请根据实际情况评估
+- 机内串口（/dev/tty*）：仅当设备不可读写时，库才会校验设备位于 `/dev` 下并尝试 `chmod 666`。不同设备权限策略可能不同，部分设备可能需要 root 或厂商授权；请根据实际情况评估
 - 机内串口当前不支持 DTR/RTS，`isDtrSupported` 和 `isRtsSupported` 均为 `false`，调用对应设置方法返回 `false`
 - USB 串口：库内置 AndroidX Startup（Manifest Provider）自动初始化并注册 USB 权限与拔出广播；在首次访问设备时会自动弹出权限申请对话框，无需手动在 Manifest 配置接收器
+- 多通道 USB 串口会为每个通道返回独立条目；多通道设备的 `SerialPortInfo.id` 使用 `设备名#通道索引`，单通道设备 ID 保持不变
 - USB 串口的 DTR/RTS 支持取决于 USB 转串口芯片及其驱动；打开串口后可通过 `isDtrSupported`、`isRtsSupported` 检查
 - 依赖：库已在内部依赖 `androidx.startup:startup-runtime` 以及常用 USB 串口驱动库，无需单独引入
 

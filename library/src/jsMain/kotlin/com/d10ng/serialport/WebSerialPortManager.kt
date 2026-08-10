@@ -20,17 +20,24 @@ object WebSerialPortManager : ISerialPortManager {
     private val connectHandler: (dynamic) -> Unit = { event ->
         val port = event.target
         runCatching {
-            if (connectionStateRegistry.markConnected(port as Any, portLogicalKey(port))) {
-                _portEventFlow.tryEmit(SerialPortEvent.Connected(toPortInfo(port)))
+            val portInfo = toPortInfo(port)
+            if (connectionStateRegistry.markConnected(port as Any, portInfo.id)) {
+                if (!_portEventFlow.tryEmit(SerialPortEvent.Connected(portInfo))) {
+                    logger.w { "drop serial connect event for [${portInfo.id}]: event buffer is full" }
+                }
             }
         }.onFailure { logger.w { "handle serial connect event fail: ${it.message}" } }
     }
     private val disconnectHandler: (dynamic) -> Unit = { event ->
         val port = event.target
         runCatching {
-            if (connectionStateRegistry.markDisconnected(port as Any, portLogicalKey(port))) {
-                val info = identityRegistry.remove(port as Any) ?: toPortInfo(port)
-                _portEventFlow.tryEmit(SerialPortEvent.Disconnected(info))
+            val knownInfo = toPortInfo(port)
+            val shouldEmit = connectionStateRegistry.markDisconnected(port as Any, knownInfo.id)
+            val info = identityRegistry.remove(port as Any) ?: knownInfo
+            if (shouldEmit) {
+                if (!_portEventFlow.tryEmit(SerialPortEvent.Disconnected(info))) {
+                    logger.w { "drop serial disconnect event for [${info.id}]: event buffer is full" }
+                }
             }
         }.onFailure { logger.w { "handle serial disconnect event fail: ${it.message}" } }
     }
@@ -95,8 +102,4 @@ object WebSerialPortManager : ISerialPortManager {
         return identityRegistry.getOrCreate(port as Any, description)
     }
 
-    private fun portLogicalKey(port: dynamic): String {
-        val info = port.getInfo()
-        return "usb:${info.usbVendorId ?: "unknown"}:${info.usbProductId ?: "unknown"}"
-    }
 }

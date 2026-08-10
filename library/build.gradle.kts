@@ -76,21 +76,31 @@ android {
     }
 }
 
-val bds100MavenUsername: String by project
-val bds100MavenPassword: String by project
-
 afterEvaluate {
     publishing {
         repositories {
-            maven {
-                url = uri("/Users/d10ng/project/kotlin/maven-repo/repository")
-            }
-            maven {
-                credentials {
-                    username = bds100MavenUsername
-                    password = bds100MavenPassword
+            providers.gradleProperty("localMavenRepository").orNull
+                ?.takeIf { it.isNotBlank() }
+                ?.let { repositoryPath ->
+                    maven {
+                        name = "local"
+                        url = uri(repositoryPath)
+                    }
                 }
-                setUrl("https://nexus.bds100.com/repository/maven-releases/")
+
+            val username = providers.gradleProperty("bds100MavenUsername").orNull
+                ?.takeIf { it.isNotBlank() }
+            val password = providers.gradleProperty("bds100MavenPassword").orNull
+                ?.takeIf { it.isNotBlank() }
+            if (username != null && password != null) {
+                maven {
+                    name = "bds100"
+                    credentials {
+                        this.username = username
+                        this.password = password
+                    }
+                    setUrl("https://nexus.bds100.com/repository/maven-releases/")
+                }
             }
         }
     }

@@ -2,12 +2,17 @@ package com.d10ng.serialport
 
 import android.serialport.SerialPort
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 /**
  * Android串口
@@ -19,102 +24,168 @@ class AndroidSerialPort(
     config: SerialPortConfig
 ): BaseSerialPort(info, config) {
 
+    companion object {
+        private const val ROOT_COMMAND_TIMEOUT_SECONDS = 5L
+        private val SAFE_DEVICE_PATH = Regex("^/dev/[A-Za-z0-9._/-]+$")
+    }
+
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val lifecycleMutex = Mutex()
+    private val writeMutex = Mutex()
+    private val stateLock = Any()
 
     private var sp: SerialPort? = null
+    private var readJob: Job? = null
+    private var generation = 0L
 
     override val isDtrSupported: Boolean = false
     override val isRtsSupported: Boolean = false
 
-    // 缓存数据
-    private val buffer = ByteArray(2048)
-    // 循环读取数据任务
-    private var readJob: Job? = null
-
     override suspend fun open() {
-        if (sp != null) {
-            logger.w { "Serial port [${info.id}] already opened" }
-            return
-        }
-        val file = File(info.id)
-        // 提权
-        if (!file.canRead() || !file.canWrite()) chmod777(file)
-        runCatching {
-            logger.d { "open serial port [${info.id}], config: $config" }
-            // 打开串口
-            sp = SerialPort(
-                file,
-                config.baudRate.intValue,
-                config.dataBits.intValue,
-                config.parity.intValue,
-                config.stopBits.intValue
-            )
-            startRead()
-            openStateFlow.value = true
-        }.onFailure { exception ->
-            logger.w { "open fail: ${exception.message}" }
-            sp = null
-            throw exception
+        lifecycleMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val token = synchronized(stateLock) {
+                    if (sp != null) return@synchronized null
+                    generation += 1
+                    generation
+                }
+                if (token == null) {
+                    logger.w { "Serial port [${info.id}] already opened" }
+                    return@withContext
+                }
+
+                val file = resolveDeviceFile(info.id)
+                if ((!file.canRead() || !file.canWrite()) && !chmodDevice(file)) {
+                    throw SecurityException("Serial port [${file.absolutePath}] is not readable and writable")
+                }
+
+                var openedPort: SerialPort? = null
+                runCatching {
+                    logger.d { "open serial port [${info.id}], config: $config" }
+                    val port = synchronized(stateLock) {
+                        check(generation == token && sp == null) {
+                            "Serial port was closed while opening"
+                        }
+                        SerialPort(
+                            file,
+                            config.baudRate.intValue,
+                            config.dataBits.intValue,
+                            config.parity.intValue,
+                            config.stopBits.intValue
+                        ).also {
+                            openedPort = it
+                            sp = it
+                        }
+                    }
+                    startRead(port, token)
+                }.onFailure { exception ->
+                    logger.w { "open fail: ${exception.message}" }
+                    synchronized(stateLock) {
+                        if (generation == token) generation += 1
+                        if (sp === openedPort) {
+                            sp = null
+                            readJob = null
+                        }
+                    }
+                    runCatching { openedPort?.tryClose() }
+                    openStateFlow.value = false
+                    throw exception
+                }
+            }
         }
     }
 
     /**
-     * 修改权限
-     * @param device File
-     * @return Boolean
+     * 修改设备权限。设备路径必须解析到 /dev 下，避免把外部输入注入 root shell。
      */
-    private fun chmod777(device: File): Boolean {
-        if (!device.exists()) {
-            logger.w { "device [${device.absolutePath}] not exists" }
-            return false
+    private fun resolveDeviceFile(path: String): File {
+        val file = File(path).canonicalFile
+        require(SAFE_DEVICE_PATH.matches(file.absolutePath)) {
+            "Serial port path must resolve to a device under /dev"
         }
-        if (device.canRead() && device.canWrite() && device.canExecute()) return true
+        require(file.exists()) { "Serial port [${file.absolutePath}] does not exist" }
+        return file
+    }
+
+    private fun chmodDevice(device: File): Boolean {
+        if (device.canRead() && device.canWrite()) return true
+
         return runCatching {
-            val su = Runtime.getRuntime().exec("/system/bin/su")
-            val cmd = "chmod 777 ${device.absolutePath}\nexit\n"
-            su.outputStream.write(cmd.toByteArray())
-            0 == su.waitFor() && device.canRead() && device.canWrite() && device.canExecute()
+            val safePath = device.absolutePath
+
+            val process = ProcessBuilder(
+                "/system/bin/su",
+                "-c",
+                "chmod 666 $safePath"
+            ).start()
+            try {
+                val completed = process.waitFor(ROOT_COMMAND_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                if (!completed) process.destroy()
+                completed && process.exitValue() == 0 && device.canRead() && device.canWrite()
+            } finally {
+                runCatching { process.inputStream.close() }
+                runCatching { process.errorStream.close() }
+                runCatching { process.outputStream.close() }
+            }
         }.onFailure { exception ->
-            logger.w { "chmod 777 ${device.absolutePath} fail: ${exception.message}" }
+            logger.w { "chmod 666 ${device.absolutePath} fail: ${exception.message}" }
         }.getOrDefault(false)
     }
 
-    private fun startRead() {
-        // 启动读取线程
-        readJob = scope.launch {
-            loop@ while (isActive && sp != null) {
-                runCatching {
-                    val size = sp!!.inputStream.read(buffer)
+    private fun startRead(port: SerialPort, token: Long) {
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            val buffer = ByteArray(2048)
+            try {
+                loop@ while (isActive && isCurrent(port, token)) {
+                    val size = runCatching { port.inputStream.read(buffer) }
+                        .onFailure { exception ->
+                            logger.w { "read fail: ${exception.message}" }
+                        }
+                        .getOrElse { break@loop }
                     if (size > 0) {
                         val data = buffer.copyOfRange(0, size)
                         logger.d { "RX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
                         logger.d { "RX STR: ${data.decodeToString()}" }
-                        outputDataFlow.tryEmit(data)
+                        outputDataFlow.emit(data)
                     } else if (size == -1) {
                         logger.w { "read fail: stream closed" }
                         break@loop
                     }
-                }.onFailure { exception ->
-                    logger.w { "read fail: ${exception.message}" }
-                    break@loop
                 }
+            } finally {
+                closeIfCurrent(port, token)
             }
-            close()
         }
+        var shouldStart = false
+        synchronized(stateLock) {
+            if (sp === port && generation == token) {
+                readJob = job
+                openStateFlow.value = true
+                shouldStart = true
+            } else {
+                job.cancel()
+            }
+        }
+        if (shouldStart) job.start()
     }
 
-    override suspend fun write(data: ByteArray): Boolean {
-        return runCatching {
-            logger.d { "TX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
-            logger.d { "TX STR: ${data.decodeToString()}" }
-            sp!!.outputStream.let { os ->
-                os.write(data)
-                os.flush()
+    override suspend fun write(data: ByteArray): Boolean = writeMutex.withLock {
+        withContext(Dispatchers.IO) {
+            synchronized(stateLock) {
+                val port = sp ?: return@synchronized false
+                runCatching {
+                    logger.d { "TX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
+                    logger.d { "TX STR: ${data.decodeToString()}" }
+                    port.outputStream.let { output ->
+                        output.write(data)
+                        output.flush()
+                    }
+                    true
+                }.onFailure { exception ->
+                    logger.w { "write fail: ${exception.message}"}
+                }.getOrDefault(false)
             }
-            true
-        }.onFailure { exception ->
-            logger.w { "write fail: ${exception.message}"}
-        }.getOrDefault(false)
+        }
     }
 
     override suspend fun setDtr(enabled: Boolean): Boolean {
@@ -129,10 +200,39 @@ class AndroidSerialPort(
 
     override fun close() {
         logger.d { "close serial port [${info.id}]" }
-        runCatching { readJob?.cancel() }
-        runCatching { sp?.tryClose() }
-        readJob = null
-        sp = null
-        openStateFlow.value = false
+        synchronized(stateLock) {
+            generation += 1
+            val job = readJob
+            val port = sp
+            readJob = null
+            sp = null
+            openStateFlow.value = false
+            job?.cancel()
+            runCatching { port?.tryClose() }
+        }
+    }
+
+    override suspend fun closeAndAwait() {
+        lifecycleMutex.withLock {
+            val job = synchronized(stateLock) { readJob }
+            close()
+            job?.join()
+        }
+    }
+
+    private fun isCurrent(port: SerialPort, token: Long): Boolean =
+        synchronized(stateLock) { sp === port && generation == token }
+
+    private fun closeIfCurrent(port: SerialPort, token: Long) {
+        synchronized(stateLock) {
+            if (sp !== port || generation != token) return
+            generation += 1
+            val job = readJob
+            readJob = null
+            sp = null
+            openStateFlow.value = false
+            job?.cancel()
+            runCatching { port.tryClose() }
+        }
     }
 }

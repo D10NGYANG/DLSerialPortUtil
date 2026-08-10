@@ -20,17 +20,24 @@ object WebSerialPortManager : ISerialPortManager {
     private val connectHandler: (SerialConnectionEvent) -> Unit = { event ->
         runCatching {
             val port = event.target
-            if (connectionStateRegistry.markConnected(port, port.logicalKey())) {
-                _portEventFlow.tryEmit(SerialPortEvent.Connected(port.toPortInfo()))
+            val portInfo = port.toPortInfo()
+            if (connectionStateRegistry.markConnected(port, portInfo.id)) {
+                if (!_portEventFlow.tryEmit(SerialPortEvent.Connected(portInfo))) {
+                    logger.w { "drop serial connect event for [${portInfo.id}]: event buffer is full" }
+                }
             }
         }.onFailure { logger.w { "handle serial connect event fail: ${it.message}" } }
     }
     private val disconnectHandler: (SerialConnectionEvent) -> Unit = { event ->
         runCatching {
             val port = event.target
-            if (connectionStateRegistry.markDisconnected(port, port.logicalKey())) {
-                val info = identityRegistry.remove(port) ?: port.toPortInfo()
-                _portEventFlow.tryEmit(SerialPortEvent.Disconnected(info))
+            val knownInfo = port.toPortInfo()
+            val shouldEmit = connectionStateRegistry.markDisconnected(port, knownInfo.id)
+            val info = identityRegistry.remove(port) ?: knownInfo
+            if (shouldEmit) {
+                if (!_portEventFlow.tryEmit(SerialPortEvent.Disconnected(info))) {
+                    logger.w { "drop serial disconnect event for [${info.id}]: event buffer is full" }
+                }
             }
         }.onFailure { logger.w { "handle serial disconnect event fail: ${it.message}" } }
     }
@@ -89,8 +96,4 @@ object WebSerialPortManager : ISerialPortManager {
         return identityRegistry.getOrCreate(this, description)
     }
 
-    private fun SerialPort.logicalKey(): String {
-        val info = getInfo()
-        return "usb:${info.usbVendorId ?: "unknown"}:${info.usbProductId ?: "unknown"}"
-    }
 }
