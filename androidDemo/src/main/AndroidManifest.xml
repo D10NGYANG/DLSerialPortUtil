@@ -2,12 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- 串口通讯权限 -->
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    
-    <!-- USB设备权限 -->
-    <uses-feature android:name="android.hardware.usb.host" />
+    <!-- Manifest 静态能力声明；具体 USB 设备授权由应用运行时调用 UsbManager.requestPermission。 -->
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -21,7 +19,6 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name"
             android:theme="@style/Theme.DLSerialPortUtil">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

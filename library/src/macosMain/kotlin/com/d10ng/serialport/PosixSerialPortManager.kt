@@ -13,7 +13,7 @@ object PosixSerialPortManager: ISerialPortManager {
 
     override fun isSupported(): Boolean {
         val supported = true
-        logger.i { "isSupported: $supported" }
+        logger.i { "[serial.capability] adapter=posix supported=$supported" }
         return supported
     }
 
@@ -38,7 +38,8 @@ object PosixSerialPortManager: ISerialPortManager {
         closedir(dir)
 
         val list = ports.sortedBy { it.id }
-        logger.i { "listPorts found: ${list.size}" }
+        list.forEach { logger.d { "[serial.list.port] ${it.id}" } }
+        logger.i { "[serial.list] root=/dev prefix=tty.,cu. accessible=true count=${list.size}" }
         return list
     }
 
@@ -46,7 +47,7 @@ object PosixSerialPortManager: ISerialPortManager {
         portInfo: SerialPortInfo,
         config: SerialPortConfig
     ): BaseSerialPort {
-        logger.i { "open request: ${portInfo.id}" }
+        logger.i { "[serial.open.request] ${portInfo.id} ${serialConfigFields(config)}" }
         return PosixSerialPort(portInfo, config).apply { open() }
     }
 

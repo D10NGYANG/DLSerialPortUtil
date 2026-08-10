@@ -1,28 +1,21 @@
 package com.d10ng.serialport
 
-import android.annotation.SuppressLint
-import android.app.PendingIntent
-import android.content.Intent
 import android.hardware.usb.UsbDeviceConnection
-import android.os.Build
 import com.hoho.android.usbserial.driver.UsbSerialDriver
 import com.hoho.android.usbserial.driver.UsbSerialPort
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 
 /**
  * Android USB串口
@@ -37,7 +30,7 @@ class AndroidUsbSerialPort(
     companion object {
         private const val WRITE_WAIT_MILLIS = 2000
         private const val READ_WAIT_MILLIS = 2000
-        private const val PERMISSION_WAIT_MILLIS = 30_000L
+        private const val READ_RETRY_MILLIS = 50L
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -46,6 +39,7 @@ class AndroidUsbSerialPort(
     private val stateLock = Any()
 
     private var sp: UsbSerialPort? = null
+    private var deviceConnection: UsbDeviceConnection? = null
     private var readJob: Job? = null
     private var detachJob: Job? = null
     private var generation = 0L
@@ -62,7 +56,6 @@ class AndroidUsbSerialPort(
             port != null && UsbSerialPort.ControlLine.RTS in port.supportedControlLines
         }.getOrDefault(false)
 
-    @SuppressLint("ObsoleteSdkInt")
     override suspend fun open() {
         lifecycleMutex.withLock {
             val token = synchronized(stateLock) {
@@ -79,39 +72,50 @@ class AndroidUsbSerialPort(
                 ?: throw IllegalArgumentException("Serial port [${info.id}] does not contain a USB driver")
             val driver = handle.driver
             val deviceName = driver.device.deviceName
-            logger.d { "open serial port [${info.id}], config: $config" }
+            val vendorId = driver.device.vendorId.toString(16).uppercase()
+            val productId = driver.device.productId.toString(16).uppercase()
+            logger.i {
+                "[serial.open] ${info.id} ${serialConfigFields(config)} vid=$vendorId pid=$productId"
+            }
             ensurePermission(driver)
 
             withContext(Dispatchers.IO) {
                 var connection: UsbDeviceConnection? = null
                 var openedPort: UsbSerialPort? = null
                 runCatching {
-                    val port = synchronized(stateLock) {
-                        check(generation == token && sp == null) {
-                            "Serial port was closed while opening"
-                        }
-                        val deviceConnection = usbManager.openDevice(driver.device)
-                            ?: throw Exception("connect fail: open device fail")
-                        connection = deviceConnection
-                        val candidate = handle.selectedPort()
-                        openedPort = candidate
-                        candidate.open(deviceConnection)
-                        candidate.setParameters(
-                            config.baudRate.intValue,
-                            config.dataBits.intValue,
-                            config.stopBits.intValue,
-                            config.parity.intValue
+                    val openedConnection = usbManager.openDevice(driver.device)
+                        ?: throw IllegalStateException(
+                            "Serial port [${info.id}] could not open USB device [$deviceName]"
                         )
-                        candidate.also { sp = it }
+                    connection = openedConnection
+                    val port = handle.selectedPort().also { openedPort = it }
+                    port.open(openedConnection)
+                    port.setParameters(
+                        config.baudRate.intValue,
+                        config.dataBits.intValue,
+                        config.stopBits.intValue,
+                        config.parity.intValue
+                    )
+                    val installed = synchronized(stateLock) {
+                        if (generation == token && sp == null) {
+                            sp = port
+                            deviceConnection = openedConnection
+                            true
+                        } else {
+                            false
+                        }
                     }
+                    check(installed) { "Serial port [${info.id}] was closed while opening" }
                     startDetachListener(deviceName, port, token)
-                    startRead(port, token)
+                    startRead(deviceName, port, token)
+                    logger.i { "[serial.open.ok] ${info.id}" }
                 }.onFailure { exception ->
-                    logger.w { "open fail: ${exception.message}" }
+                    logger.w { "[serial.open.fail] ${info.id} error=${exception.serialContext()}" }
                     synchronized(stateLock) {
                         if (generation == token) generation += 1
                         if (sp === openedPort) {
                             sp = null
+                            deviceConnection = null
                             readJob = null
                             detachJob = null
                         }
@@ -125,72 +129,67 @@ class AndroidUsbSerialPort(
         }
     }
 
-    @SuppressLint("ObsoleteSdkInt")
     private suspend fun ensurePermission(driver: UsbSerialDriver) {
         val device = driver.device
         if (usbManager.hasPermission(device)) return
-
-        coroutineScope {
-            val result = async(start = CoroutineStart.UNDISPATCHED) {
-                StartupInitializer.usbPermissionResultFlow
-                    .filter { it.first == device.deviceName }
-                    .first()
-                    .second
-            }
-            try {
-                withContext(Dispatchers.Main) {
-                    val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_MUTABLE else 0
-                    val intent = Intent(ACTION_USB_PERMISSION).setPackage(ctx.packageName)
-                    usbManager.requestPermission(
-                        device,
-                        PendingIntent.getBroadcast(ctx, device.deviceId, intent, flags)
-                    )
-                }
-                val granted = try {
-                    withTimeout(PERMISSION_WAIT_MILLIS) { result.await() }
-                } catch (_: TimeoutCancellationException) {
-                    throw Exception("connect fail: permission request timed out")
-                }
-                if (!granted) throw Exception("connect fail: permission denied")
-            } finally {
-                result.cancel()
-            }
+        val vendorId = device.vendorId.toString(16).uppercase()
+        val productId = device.productId.toString(16).uppercase()
+        logger.w {
+            "[serial.permission.missing] ${info.id} device=${device.deviceName} vid=$vendorId pid=$productId"
         }
+        throw SecurityException(
+            "USB permission is missing for serial port [${info.id}] device [${device.deviceName}] " +
+                "VID:$vendorId PID:$productId; the application must request UsbManager permission before open()"
+        )
     }
 
     private fun startDetachListener(deviceName: String, port: UsbSerialPort, token: Long) {
-        val job = scope.launch(start = CoroutineStart.LAZY) {
+        val job = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            if (usbManager.deviceList.values.none { it.deviceName == deviceName }) {
+                closeIfCurrent(port, token, "usb-device-missing:$deviceName")
+                return@launch
+            }
             StartupInitializer.usbDeviceDetachedFlow.first { it == deviceName }
-            closeIfCurrent(port, token)
+            closeIfCurrent(port, token, "usb-detached:$deviceName")
         }
         synchronized(stateLock) {
             if (sp === port && generation == token) detachJob = job else job.cancel()
         }
-        job.start()
     }
 
-    private fun startRead(port: UsbSerialPort, token: Long) {
+    private fun startRead(deviceName: String, port: UsbSerialPort, token: Long) {
         val job = scope.launch(start = CoroutineStart.LAZY) {
             val buffer = ByteArray(2048)
+            var disconnectReason: String? = null
+            logger.i { "[serial.read.start] ${info.id}" }
             try {
                 loop@ while (isActive && isCurrent(port, token)) {
-                    val size = runCatching { port.read(buffer, buffer.size, READ_WAIT_MILLIS) }
-                        .onFailure { exception ->
-                            logger.w { "read fail: ${exception.message}" }
+                    val size = try {
+                        port.read(buffer, buffer.size, READ_WAIT_MILLIS)
+                    } catch (exception: CancellationException) {
+                        throw exception
+                    } catch (exception: Throwable) {
+                        val detached = usbManager.deviceList.values.none { it.deviceName == deviceName }
+                        if (detached || exception.hasDefinitiveDisconnectEvidence()) {
+                            disconnectReason = if (detached) "usb-device-missing:$deviceName" else exception.serialContext()
+                            break@loop
                         }
-                        .getOrElse { break@loop }
+                        logger.w {
+                            "[serial.read.fail] ${info.id} action=retry error=${exception.serialContext()}"
+                        }
+                        delay(READ_RETRY_MILLIS)
+                        continue@loop
+                    }
                     if (size > 0) {
                         val data = buffer.copyOfRange(0, size)
-                        logger.d { "RX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
-                        logger.d { "RX STR: ${data.decodeToString()}" }
-                        outputDataFlow.emit(data)
-                    } else if (size == -1) {
-                        break@loop
+                        emitReceived(data)
                     }
                 }
             } finally {
-                closeIfCurrent(port, token)
+                logger.i {
+                    "[serial.read.stop] ${info.id} reason=${disconnectReason ?: "cancelled-or-replaced"}"
+                }
+                disconnectReason?.let { closeIfCurrent(port, token, it) }
             }
         }
         var shouldStart = false
@@ -206,26 +205,44 @@ class AndroidUsbSerialPort(
         if (shouldStart) job.start()
     }
 
-    override suspend fun write(data: ByteArray): Boolean = writeMutex.withLock {
-        withContext(Dispatchers.IO) {
-            synchronized(stateLock) {
-                val port = sp ?: return@synchronized false
-                runCatching {
-                    logger.d { "TX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
-                    logger.d { "TX STR: ${data.decodeToString()}" }
-                    port.write(data, WRITE_WAIT_MILLIS)
+    override suspend fun write(data: ByteArray): Boolean = withWriteOperation(data.size) { operationId ->
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val port = synchronized(stateLock) { sp }
+                if (port == null) {
+                    logger.w { "[serial.write.fail] ${info.id} op=$operationId reason=not-open" }
+                    return@withContext false
+                }
+                logger.d { "[serial.write.start] ${info.id} timeout=${WRITE_WAIT_MILLIS}ms op=$operationId" }
+                try {
+                    logger.d { serialPayloadLog("tx", info.id, data, operationId) }
+                    if (data.isNotEmpty()) {
+                        port.write(data, WRITE_WAIT_MILLIS)
+                    }
+                    logger.d { "[serial.write.ok] ${info.id} ${data.size}B op=$operationId" }
                     true
-                }.onFailure { exception ->
-                    logger.w { "write fail: ${exception.message}"}
-                }.getOrDefault(false)
+                } catch (exception: CancellationException) {
+                    logger.w { "[serial.write.cancel] ${info.id} op=$operationId" }
+                    throw exception
+                } catch (exception: Throwable) {
+                    val type = if (exception::class.simpleName?.contains("Timeout", ignoreCase = true) == true) {
+                        "timeout"
+                    } else {
+                        "fail"
+                    }
+                    logger.w {
+                        "[serial.write.$type] ${info.id} op=$operationId error=${exception.serialContext()}"
+                    }
+                    false
+                }
             }
         }
     }
 
-    override suspend fun setDtr(enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
-        synchronized(stateLock) {
-            val port = sp ?: return@synchronized false
-            if (UsbSerialPort.ControlLine.DTR !in port.supportedControlLines) return@synchronized false
+    override suspend fun setDtr(enabled: Boolean): Boolean = writeMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val port = synchronized(stateLock) { sp } ?: return@withContext false
+            if (UsbSerialPort.ControlLine.DTR !in port.supportedControlLines) return@withContext false
             runCatching {
                 port.setDTR(enabled)
                 true
@@ -235,10 +252,10 @@ class AndroidUsbSerialPort(
         }
     }
 
-    override suspend fun setRts(enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
-        synchronized(stateLock) {
-            val port = sp ?: return@synchronized false
-            if (UsbSerialPort.ControlLine.RTS !in port.supportedControlLines) return@synchronized false
+    override suspend fun setRts(enabled: Boolean): Boolean = writeMutex.withLock {
+        withContext(Dispatchers.IO) {
+            val port = synchronized(stateLock) { sp } ?: return@withContext false
+            if (UsbSerialPort.ControlLine.RTS !in port.supportedControlLines) return@withContext false
             runCatching {
                 port.setRTS(enabled)
                 true
@@ -249,19 +266,23 @@ class AndroidUsbSerialPort(
     }
 
     override fun close() {
-        logger.d { "close serial port [${info.id}]" }
+        logger.i { "[serial.close] ${info.id} reason=caller" }
         synchronized(stateLock) {
             generation += 1
             val read = readJob
             val detach = detachJob
             val port = sp
+            val connection = deviceConnection
             readJob = null
             detachJob = null
             sp = null
+            deviceConnection = null
             openStateFlow.value = false
             read?.cancel()
             detach?.cancel()
             runCatching { port?.close() }
+            runCatching { connection?.close() }
+            logger.i { "[serial.cleanup] ${info.id} state=closed" }
         }
     }
 
@@ -287,19 +308,23 @@ class AndroidUsbSerialPort(
     private fun isCurrent(port: UsbSerialPort, token: Long): Boolean =
         synchronized(stateLock) { sp === port && generation == token }
 
-    private fun closeIfCurrent(port: UsbSerialPort, token: Long) {
+    private fun closeIfCurrent(port: UsbSerialPort, token: Long, reason: String) {
         synchronized(stateLock) {
             if (sp !== port || generation != token) return
+            logger.w { "[serial.disconnect] ${info.id} evidence=$reason" }
             generation += 1
             val read = readJob
             val detach = detachJob
+            val connection = deviceConnection
             readJob = null
             detachJob = null
             sp = null
+            deviceConnection = null
             openStateFlow.value = false
             read?.cancel()
             detach?.cancel()
             runCatching { port.close() }
+            runCatching { connection?.close() }
         }
     }
 }

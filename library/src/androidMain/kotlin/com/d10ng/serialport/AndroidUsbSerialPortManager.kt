@@ -12,7 +12,7 @@ object AndroidUsbSerialPortManager: ISerialPortManager {
 
     override fun isSupported(): Boolean {
         val supported = true
-        logger.i { "isSupported: $supported" }
+        logger.i { "[serial.capability] adapter=android-usb supported=$supported" }
         return supported
     }
 
@@ -37,7 +37,16 @@ object AndroidUsbSerialPortManager: ISerialPortManager {
                     )
                 }
             }
-        logger.i { "listPorts found: ${list.size}" }
+        list.forEach { portInfo ->
+            val handle = portInfo.obj as AndroidUsbSerialPortHandle
+            val device = handle.driver.device
+            val serialNumber = runCatching { device.serialNumber }.getOrNull() ?: "Unknown"
+            logger.d {
+                "[serial.list.port] ${portInfo.id} vid=${device.vendorId.toString(16).uppercase()} " +
+                    "pid=${device.productId.toString(16).uppercase()} serial=$serialNumber"
+            }
+        }
+        logger.i { "[serial.list] source=usb-default-prober count=${list.size}" }
         return list
     }
 
@@ -45,7 +54,7 @@ object AndroidUsbSerialPortManager: ISerialPortManager {
         portInfo: SerialPortInfo,
         config: SerialPortConfig
     ): BaseSerialPort {
-        logger.i { "open request: ${portInfo.id}" }
+        logger.i { "[serial.open.request] ${portInfo.id} ${serialConfigFields(config)}" }
         return AndroidUsbSerialPort(portInfo, config).apply { open() }
     }
 }

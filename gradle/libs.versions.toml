@@ -1,13 +1,13 @@
 [versions]
-agp = "8.13.0"
+agp = "8.13.2"
 android-compileSdk = "36"
 android-minSdk = "26"
-android-targetSdk = "34"
+android-targetSdk = "36"
 androidx-activity-compose = "1.11.0"
 androidx-compose-bom = "2025.09.01"
 androidx-core = "1.17.0"
 androidx-lifecycle = "2.9.4"
-androidx-navigation = "2.9.5"
+androidx-navigation = "2.9.8"
 androidx-startup-runtime = "1.2.0"
 androidx-test-espresso = "3.7.0"
 androidx-test-junit = "1.3.0"
@@ -19,9 +19,9 @@ kotlin = "2.2.20"
 kotlinx-coroutines = "1.10.2"
 kotlinx-datetime = "0.7.1"
 serialport-android = "2.1.5"
-serialport-android-usb = "3.9.0"
-serialport-jvm = "2.11.2"
-dllogutil = "0.1.1"
+serialport-android-usb = "3.11.0"
+serialport-jvm = "2.11.4"
+dllogutil = "0.2.1"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity-compose" }
@@ -47,6 +47,7 @@ junit = { module = "junit:junit", version.ref = "junit" }
 kotlinx-coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 serialport-android = { module = "com.licheedev:android-serialport", version.ref = "serialport-android" }
 serialport-android-usb = { module = "com.github.mik3y:usb-serial-for-android", version.ref = "serialport-android-usb" }

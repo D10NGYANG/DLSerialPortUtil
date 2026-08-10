@@ -1,18 +1,19 @@
 package com.d10ng.serialport
 
 import android.serialport.SerialPort
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 /**
  * Android串口
@@ -25,8 +26,8 @@ class AndroidSerialPort(
 ): BaseSerialPort(info, config) {
 
     companion object {
-        private const val ROOT_COMMAND_TIMEOUT_SECONDS = 5L
         private val SAFE_DEVICE_PATH = Regex("^/dev/[A-Za-z0-9._/-]+$")
+        private const val READ_RETRY_MILLIS = 50L
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -55,31 +56,37 @@ class AndroidSerialPort(
                 }
 
                 val file = resolveDeviceFile(info.id)
-                if ((!file.canRead() || !file.canWrite()) && !chmodDevice(file)) {
-                    throw SecurityException("Serial port [${file.absolutePath}] is not readable and writable")
+                if (!file.canRead() || !file.canWrite()) {
+                    logger.w { "[serial.open.fail] ${info.id} reason=permission-denied" }
+                    throw SecurityException(
+                        "Serial port [${file.absolutePath}] is not readable and writable; " +
+                            "grant device-file access in the application or system configuration"
+                    )
                 }
 
                 var openedPort: SerialPort? = null
                 runCatching {
-                    logger.d { "open serial port [${info.id}], config: $config" }
-                    val port = synchronized(stateLock) {
-                        check(generation == token && sp == null) {
-                            "Serial port was closed while opening"
-                        }
-                        SerialPort(
-                            file,
-                            config.baudRate.intValue,
-                            config.dataBits.intValue,
-                            config.parity.intValue,
-                            config.stopBits.intValue
-                        ).also {
-                            openedPort = it
-                            sp = it
+                    logger.i { "[serial.open] ${info.id} ${serialConfigFields(config)}" }
+                    val port = SerialPort(
+                        file,
+                        config.baudRate.intValue,
+                        config.dataBits.intValue,
+                        config.parity.intValue,
+                        config.stopBits.intValue
+                    ).also { openedPort = it }
+                    val installed = synchronized(stateLock) {
+                        if (generation == token && sp == null) {
+                            sp = port
+                            true
+                        } else {
+                            false
                         }
                     }
+                    check(installed) { "Serial port [${info.id}] was closed while opening" }
                     startRead(port, token)
+                    logger.i { "[serial.open.ok] ${info.id}" }
                 }.onFailure { exception ->
-                    logger.w { "open fail: ${exception.message}" }
+                    logger.w { "[serial.open.fail] ${info.id} error=${exception.serialContext()}" }
                     synchronized(stateLock) {
                         if (generation == token) generation += 1
                         if (sp === openedPort) {
@@ -95,9 +102,6 @@ class AndroidSerialPort(
         }
     }
 
-    /**
-     * 修改设备权限。设备路径必须解析到 /dev 下，避免把外部输入注入 root shell。
-     */
     private fun resolveDeviceFile(path: String): File {
         val file = File(path).canonicalFile
         require(SAFE_DEVICE_PATH.matches(file.absolutePath)) {
@@ -107,53 +111,41 @@ class AndroidSerialPort(
         return file
     }
 
-    private fun chmodDevice(device: File): Boolean {
-        if (device.canRead() && device.canWrite()) return true
-
-        return runCatching {
-            val safePath = device.absolutePath
-
-            val process = ProcessBuilder(
-                "/system/bin/su",
-                "-c",
-                "chmod 666 $safePath"
-            ).start()
-            try {
-                val completed = process.waitFor(ROOT_COMMAND_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                if (!completed) process.destroy()
-                completed && process.exitValue() == 0 && device.canRead() && device.canWrite()
-            } finally {
-                runCatching { process.inputStream.close() }
-                runCatching { process.errorStream.close() }
-                runCatching { process.outputStream.close() }
-            }
-        }.onFailure { exception ->
-            logger.w { "chmod 666 ${device.absolutePath} fail: ${exception.message}" }
-        }.getOrDefault(false)
-    }
-
     private fun startRead(port: SerialPort, token: Long) {
         val job = scope.launch(start = CoroutineStart.LAZY) {
             val buffer = ByteArray(2048)
+            var disconnectReason: String? = null
+            logger.i { "[serial.read.start] ${info.id}" }
             try {
                 loop@ while (isActive && isCurrent(port, token)) {
-                    val size = runCatching { port.inputStream.read(buffer) }
-                        .onFailure { exception ->
-                            logger.w { "read fail: ${exception.message}" }
+                    val size = try {
+                        port.inputStream.read(buffer)
+                    } catch (exception: CancellationException) {
+                        throw exception
+                    } catch (exception: Throwable) {
+                        if (exception.hasDefinitiveDisconnectEvidence()) {
+                            disconnectReason = exception.serialContext()
+                            break@loop
                         }
-                        .getOrElse { break@loop }
+                        logger.w {
+                            "[serial.read.fail] ${info.id} action=retry error=${exception.serialContext()}"
+                        }
+                        delay(READ_RETRY_MILLIS)
+                        continue@loop
+                    }
                     if (size > 0) {
                         val data = buffer.copyOfRange(0, size)
-                        logger.d { "RX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
-                        logger.d { "RX STR: ${data.decodeToString()}" }
-                        outputDataFlow.emit(data)
+                        emitReceived(data)
                     } else if (size == -1) {
-                        logger.w { "read fail: stream closed" }
+                        disconnectReason = "stream-eof"
                         break@loop
                     }
                 }
             } finally {
-                closeIfCurrent(port, token)
+                logger.i {
+                    "[serial.read.stop] ${info.id} reason=${disconnectReason ?: "cancelled-or-replaced"}"
+                }
+                disconnectReason?.let { closeIfCurrent(port, token, it) }
             }
         }
         var shouldStart = false
@@ -169,21 +161,34 @@ class AndroidSerialPort(
         if (shouldStart) job.start()
     }
 
-    override suspend fun write(data: ByteArray): Boolean = writeMutex.withLock {
-        withContext(Dispatchers.IO) {
-            synchronized(stateLock) {
-                val port = sp ?: return@synchronized false
-                runCatching {
-                    logger.d { "TX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
-                    logger.d { "TX STR: ${data.decodeToString()}" }
-                    port.outputStream.let { output ->
-                        output.write(data)
-                        output.flush()
+    override suspend fun write(data: ByteArray): Boolean = withWriteOperation(data.size) { operationId ->
+        writeMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val port = synchronized(stateLock) { sp }
+                if (port == null) {
+                    logger.w { "[serial.write.fail] ${info.id} op=$operationId reason=not-open" }
+                    return@withContext false
+                }
+                logger.d { "[serial.write.start] ${info.id} op=$operationId" }
+                try {
+                    logger.d { serialPayloadLog("tx", info.id, data, operationId) }
+                    if (data.isNotEmpty()) {
+                        port.outputStream.let { output ->
+                            output.write(data)
+                            output.flush()
+                        }
                     }
+                    logger.d { "[serial.write.ok] ${info.id} ${data.size}B op=$operationId" }
                     true
-                }.onFailure { exception ->
-                    logger.w { "write fail: ${exception.message}"}
-                }.getOrDefault(false)
+                } catch (exception: CancellationException) {
+                    logger.w { "[serial.write.cancel] ${info.id} op=$operationId" }
+                    throw exception
+                } catch (exception: Throwable) {
+                    logger.w {
+                        "[serial.write.fail] ${info.id} op=$operationId error=${exception.serialContext()}"
+                    }
+                    false
+                }
             }
         }
     }
@@ -199,7 +204,7 @@ class AndroidSerialPort(
     }
 
     override fun close() {
-        logger.d { "close serial port [${info.id}]" }
+        logger.i { "[serial.close] ${info.id} reason=caller" }
         synchronized(stateLock) {
             generation += 1
             val job = readJob
@@ -209,6 +214,8 @@ class AndroidSerialPort(
             openStateFlow.value = false
             job?.cancel()
             runCatching { port?.tryClose() }
+                .onFailure { logger.w { "[serial.cleanup.fail] ${info.id} error=${it.serialContext()}" } }
+            logger.i { "[serial.cleanup] ${info.id} state=closed" }
         }
     }
 
@@ -223,9 +230,10 @@ class AndroidSerialPort(
     private fun isCurrent(port: SerialPort, token: Long): Boolean =
         synchronized(stateLock) { sp === port && generation == token }
 
-    private fun closeIfCurrent(port: SerialPort, token: Long) {
+    private fun closeIfCurrent(port: SerialPort, token: Long, reason: String) {
         synchronized(stateLock) {
             if (sp !== port || generation != token) return
+            logger.w { "[serial.disconnect] ${info.id} evidence=$reason" }
             generation += 1
             val job = readJob
             readJob = null
@@ -233,6 +241,7 @@ class AndroidSerialPort(
             openStateFlow.value = false
             job?.cancel()
             runCatching { port.tryClose() }
+                .onFailure { logger.w { "[serial.cleanup.fail] ${info.id} error=${it.serialContext()}" } }
         }
     }
 }

@@ -3,7 +3,7 @@
 Kotlin Multiplatform 串口通讯库。
 
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-blueviolet?logo=kotlin&logoColor=white)](#)
-[![Latest](https://img.shields.io/badge/version-0.6.1-blue)](#)
+[![Latest](https://img.shields.io/badge/version-0.7.0-blue)](#)
 [![GitHub stars](https://img.shields.io/github/stars/D10NGYANG/DLSerialPortUtil?logo=github)](https://github.com/D10NGYANG/DLSerialPortUtil/stargazers)
 
 **在线demo测试：**[https://d10ngyang.github.io/DLSerialPortUtil/](https://d10ngyang.github.io/DLSerialPortUtil/)
@@ -14,7 +14,7 @@ Kotlin Multiplatform 串口通讯库。
 - 支持 DTR（Data Terminal Ready）与 RTS（Request To Send）控制，并可在运行时查询当前串口是否支持
 - 串口配置统一：波特率、数据位、校验位、停止位等使用枚举类型确保安全
 - 基于协程的异步数据流：提供 `outputDataFlow` 与 `openStateFlow`
-- Android：支持机内串口（/dev/tty*）与 USB 串口（USB CDC 等），内置 AndroidX Startup 自动初始化、USB 权限申请与拔出监听
+- Android：支持机内串口（/dev/tty*）与 USB 串口（USB CDC 等）；库只做权限检查和拔出监听，授权由应用显式发起
 - JVM：基于 jSerialComm，支持 Windows / Linux / macOS 桌面环境
 - Linux & macOS：基于 POSIX 接口实现
 - Web（浏览器）：基于 Web Serial API，支持通过浏览器访问串口设备
@@ -31,7 +31,7 @@ Kotlin Multiplatform 串口通讯库。
 | 平台                       | KMP Target                  | 串口类型/实现                | DTR / RTS | 主要特性/说明                                                                                                                   |
 |--------------------------|-----------------------------|------------------------|-----------|---------------------------------------------------------------------------------------------------------------------------|
 | Android                  | android                     | 机内串口（/dev/tty*）       | 不支持 | 默认 `getPlatformSerialPortManager()` 返回机内串口管理器；当前底层依赖未暴露 DTR/RTS 控制接口 |
-| Android                  | android                     | USB 串口                 | 视设备而定 | 使用 `AndroidUsbSerialPortManager`；支持 USB 权限申请与拔出监听，可通过 `isDtrSupported`、`isRtsSupported` 查询具体驱动能力 |
+| Android                  | android                     | USB 串口                 | 视设备而定 | 使用 `AndroidUsbSerialPortManager`；应用负责 USB 运行时授权，库监听明确拔出事件 |
 | JVM（Windows/Linux/macOS） | jvm                         | jSerialComm            | 支持 | 标准串口名与流式读写；跨桌面系统可用 |
 | Linux                    | linuxX64, linuxArm64        | POSIX                  | 支持 | 典型设备：`/dev/ttyS0`、`/dev/ttyUSB0` 等 |
 | macOS                    | macosX64, macosArm64        | POSIX                  | 支持 | 典型设备：`/dev/tty.*`、`/dev/cu.*` 等 |
@@ -69,7 +69,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.6.1")
+                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.7.0")
             }
         }
     }
@@ -86,7 +86,7 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 // 日志库（用于控制输出等级）
-                implementation("com.github.D10NGYANG:DLLogUtil:0.1.1")
+                implementation("com.github.D10NGYANG:DLLogUtil:0.2.1")
             }
         }
     }
@@ -113,6 +113,8 @@ fun initLogging() {
 
 - 常见日志等级：`VERBOSE`、`DEBUG`、`INFO`、`WARN`、`ERROR`、`NONE`（具体以 DLLogUtil 定义为准）
 - 推荐在应用启动时设置，如：Android 的 `Application.onCreate`、JVM/桌面项目的 `main` 函数、Web 页面初始化等
+- DEBUG 通讯日志会原样输出设备路径、端口名、VID/PID、序列号（平台可用时）和完整 TX/RX payload。它可能包含敏感业务数据；调用方必须管理日志保存周期、上传范围和访问权限，生产环境不应默认长期保存 DEBUG 日志
+- 通讯行格式固定为 `[serial.tx|rx] 端口 字节数B 连续大写HEX op=写操作序号`。写入成功仅表示底层接受了字节，不表示设备完成业务处理
 
 ## 快速上手
 
@@ -151,7 +153,7 @@ suspend fun demo() {
         stopBits = StopBits.V1,
     )
 
-    // 打开串口
+    // 打开串口。0.7.0 会有限缓冲订阅建立前到达的 RX 数据。
     val sp = manager.open(portInfo, config)
 
     // 订阅数据输出
@@ -223,9 +225,12 @@ scope.launch {
 ## 各平台使用说明与注意事项
 
 ### Android
-- 机内串口（/dev/tty*）：仅当设备不可读写时，库才会校验设备位于 `/dev` 下并尝试 `chmod 666`。不同设备权限策略可能不同，部分设备可能需要 root 或厂商授权；请根据实际情况评估
+- 库 Manifest 不声明串口权限或 USB Host feature，只包含用于监听明确 USB 拔出的 AndroidX Startup provider。应用按自身设备范围声明静态能力
+- 机内串口（/dev/tty*）：库只校验路径和可读写性，不执行 `su`、`chmod` 或 SELinux 修改。设备节点权限必须由系统镜像、`ueventd.rc`、厂商策略或应用部署环境配置
 - 机内串口当前不支持 DTR/RTS，`isDtrSupported` 和 `isRtsSupported` 均为 `false`，调用对应设置方法返回 `false`
-- USB 串口：库内置 AndroidX Startup（Manifest Provider）自动初始化并注册 USB 权限与拔出广播；在首次访问设备时会自动弹出权限申请对话框，无需手动在 Manifest 配置接收器
+- USB 串口：`UsbManager` permission 是运行时、逐设备授权，不是普通 runtime permission。应用必须先调用 `UsbManager.requestPermission()`；库不会弹权限界面，缺少授权时 `open()` 抛出包含设备名、VID/PID 的 `SecurityException`
+- demo 的 [`SerialPortViewModel.kt`](androidDemo/src/main/java/com/d10ng/serialport/demo/viewmodel/SerialPortViewModel.kt) 展示了“先注册非导出 receiver，再请求授权，成功后打开”的完整流程；demo Manifest 声明 `android.hardware.usb.host` 且 `required=false`
+- 如需插入 USB 后自动启动应用，设备过滤 XML、`USB_DEVICE_ATTACHED` intent-filter 和对应 meta-data 也必须由应用声明，库不注入过滤规则
 - 多通道 USB 串口会为每个通道返回独立条目；多通道设备的 `SerialPortInfo.id` 使用 `设备名#通道索引`，单通道设备 ID 保持不变
 - USB 串口的 DTR/RTS 支持取决于 USB 转串口芯片及其驱动；打开串口后可通过 `isDtrSupported`、`isRtsSupported` 检查
 - 依赖：库已在内部依赖 `androidx.startup:startup-runtime` 以及常用 USB 串口驱动库，无需单独引入
@@ -256,6 +261,18 @@ scope.launch {
   - macOS 示例：`/dev/tty.*`、`/dev/cu.*`
 - Linux 与 macOS 的 `linuxX64/linuxArm64/macosX64/macosArm64` 目标使用 POSIX 接口实现，行为与系统串口一致
 - JVM、Linux 与 macOS 支持 DTR/RTS 控制；底层驱动不支持或串口未打开时，对应设置方法返回 `false`
+- Linux/桌面设备文件权限通常由用户组（例如 `dialout`）、udev 规则、ACL 或系统策略授予。无权限时枚举会过滤不可访问节点，显式打开会失败；库不会修改系统权限
+
+## 传输语义
+
+- 每个端口独立串行化写入；多个端口之间没有全局锁，可并发通讯
+- `write(true)` 只表示本次 payload 已完整提交给底层。设备业务应答、请求序号、超时、重试和幂等由上层协议负责
+- 库不会自动重发业务 payload，也不会用底层写入完成回调区分上层请求
+- 单次读写、写超时或协程取消不会自动关闭已交付的端口
+- 只有调用方 `close/closeAndAwait`，或 USB 拔出、文件描述符失效、Web stream 明确结束等断开证据才会清理连接；原因会写入 `[serial.disconnect]`
+- `outputDataFlow` 按底层 read 块发布，不提供协议拆包。它有限 replay 64 个块以覆盖打开与订阅之间的竞态；无订阅者且缓冲溢出时替换最旧块并记录 `[serial.rx.drop]`，有订阅者时通过挂起读循环施加背压
+
+升级详情见 [MIGRATION_0.7.0.md](MIGRATION_0.7.0.md)，实现约束见 [library/ARCHITECTURE.md](library/ARCHITECTURE.md)，依赖决策见 [DEPENDENCY_AUDIT.md](DEPENDENCY_AUDIT.md)。
 
 ## Demo 示例
 本仓库提供多平台示例以帮助你快速集成：

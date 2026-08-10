@@ -35,9 +35,13 @@ import platform.posix.CS8
 import platform.posix.CSIZE
 import platform.posix.CSTOPB
 import platform.posix.EAGAIN
+import platform.posix.EACCES
+import platform.posix.EBADF
 import platform.posix.EINTR
+import platform.posix.EIO
+import platform.posix.ENODEV
+import platform.posix.EPERM
 import platform.posix.EWOULDBLOCK
-import platform.posix.F_SETFL
 import platform.posix.O_NOCTTY
 import platform.posix.O_NONBLOCK
 import platform.posix.O_RDWR
@@ -56,7 +60,6 @@ import platform.posix.cfsetispeed
 import platform.posix.cfsetospeed
 import platform.posix.close
 import platform.posix.errno
-import platform.posix.fcntl
 import platform.posix.ioctl
 import platform.posix.open
 import platform.posix.read
@@ -65,6 +68,7 @@ import platform.posix.tcgetattr
 import platform.posix.tcsetattr
 import platform.posix.termios
 import platform.posix.write
+import kotlin.time.TimeSource
 
 /**
  * POSIX系统下的串口实现
@@ -76,6 +80,10 @@ class PosixSerialPort(
     info: SerialPortInfo,
     config: SerialPortConfig
 ): BaseSerialPort(info, config) {
+
+    companion object {
+        private const val WRITE_TIMEOUT_MILLIS = 2_000L
+    }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val lifecycleMutex = Mutex()
@@ -97,19 +105,22 @@ class PosixSerialPort(
 
             var openedFd = -1
             runCatching {
-                logger.d { "open serial port [${info.id}], config: $config" }
+                logger.i { "[serial.open] ${info.id} ${serialConfigFields(config)}" }
                 openedFd = open(info.id, O_RDWR or O_NOCTTY or O_NONBLOCK)
-                check(openedFd >= 0) { "Failed to open serial port: ${info.id}" }
-                check(fcntl(openedFd, F_SETFL, 0) == 0) {
-                    "Failed to switch serial port to blocking mode"
+                if (openedFd < 0 && (errno == EACCES || errno == EPERM)) {
+                    throw IllegalStateException(
+                        "Serial port [${info.id}] access denied errno=$errno; configure device-file permissions"
+                    )
                 }
+                check(openedFd >= 0) { "Serial port [${info.id}] open failed errno=$errno" }
                 configureSerialPort(openedFd)
 
                 fd = openedFd
                 generation += 1
                 startRead(openedFd, generation)
+                logger.i { "[serial.open.ok] ${info.id} fd=$openedFd" }
             }.onFailure { exception ->
-                logger.w { "open fail: ${exception.message}" }
+                logger.w { "[serial.open.fail] ${info.id} fd=$openedFd error=${exception.serialContext()} errno=$errno" }
                 if (openedFd != -1) close(openedFd)
                 if (fd == openedFd) {
                     generation += 1
@@ -179,6 +190,8 @@ class PosixSerialPort(
     private fun startRead(portFd: Int, token: Long) {
         val job = scope.launch(start = CoroutineStart.LAZY) {
             val buffer = ByteArray(2048)
+            var disconnectReason: String? = null
+            logger.i { "[serial.read.start] ${info.id} fd=$portFd" }
             try {
                 loop@ while (isActive && isCurrent(portFd, token)) {
                     val bytesRead = buffer.usePinned { pinned ->
@@ -187,9 +200,7 @@ class PosixSerialPort(
                     when {
                         bytesRead > 0 -> {
                             val data = buffer.copyOf(bytesRead)
-                            logger.d { "RX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
-                            logger.d { "RX STR: ${data.decodeToString()}" }
-                            outputDataFlow.emit(data)
+                            emitReceived(data)
                         }
                         bytesRead == 0 -> continue@loop
                         errno == EINTR -> continue@loop
@@ -197,11 +208,21 @@ class PosixSerialPort(
                             delay(1)
                             continue@loop
                         }
-                        else -> break@loop
+                        errno == EBADF || errno == ENODEV || errno == EIO -> {
+                            disconnectReason = "errno=$errno"
+                            break@loop
+                        }
+                        else -> {
+                            logger.w { "[serial.read.fail] ${info.id} fd=$portFd errno=$errno action=retry" }
+                            delay(50)
+                        }
                     }
                 }
             } finally {
-                closeIfCurrent(portFd, token)
+                logger.i {
+                    "[serial.read.stop] ${info.id} fd=$portFd reason=${disconnectReason ?: "cancelled-or-replaced"}"
+                }
+                disconnectReason?.let { closeIfCurrent(portFd, token, it) }
             }
         }
         if (fd == portFd && generation == token) {
@@ -213,30 +234,55 @@ class PosixSerialPort(
         }
     }
 
-    override suspend fun write(data: ByteArray): Boolean = writeMutex.withLock {
-        val portFd = fd
-        val token = generation
-        if (portFd == -1) return@withLock false
-        if (data.isEmpty()) return@withLock true
+    override suspend fun write(data: ByteArray): Boolean = withWriteOperation(data.size) { operationId ->
+        writeMutex.withLock {
+            val portFd = fd
+            val token = generation
+            if (portFd == -1) {
+                logger.w { "[serial.write.fail] ${info.id} op=$operationId reason=not-open" }
+                return@withLock false
+            }
 
-        logger.d { "TX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
-        logger.d { "TX STR: ${data.decodeToString()}" }
-        var offset = 0
-        while (offset < data.size && isCurrent(portFd, token)) {
-            val bytesWritten = data.usePinned { pinned ->
-                write(portFd, pinned.addressOf(offset), (data.size - offset).toULong())
-            }.toInt()
-            when {
-                bytesWritten > 0 -> offset += bytesWritten
-                bytesWritten == -1 && errno == EINTR -> continue
-                bytesWritten == -1 && (errno == EAGAIN || errno == EWOULDBLOCK) -> delay(1)
-                else -> {
-                    logger.w { "write fail: errno=$errno" }
+            logger.d { "[serial.write.start] ${info.id} fd=$portFd timeout=${WRITE_TIMEOUT_MILLIS}ms op=$operationId" }
+            logger.d { serialPayloadLog("tx", info.id, data, operationId) }
+            if (data.isEmpty()) {
+                logger.d { "[serial.write.ok] ${info.id} 0B op=$operationId" }
+                return@withLock true
+            }
+            var offset = 0
+            val started = TimeSource.Monotonic.markNow()
+            while (offset < data.size && isCurrent(portFd, token)) {
+                if (started.elapsedNow().inWholeMilliseconds >= WRITE_TIMEOUT_MILLIS) {
+                    logger.w {
+                        "[serial.write.timeout] ${info.id} fd=$portFd written=$offset " +
+                            "expected=${data.size} op=$operationId"
+                    }
                     return@withLock false
                 }
+                val bytesWritten = data.usePinned { pinned ->
+                    write(portFd, pinned.addressOf(offset), (data.size - offset).toULong())
+                }.toInt()
+                when {
+                    bytesWritten > 0 -> offset += bytesWritten
+                    bytesWritten == -1 && errno == EINTR -> continue
+                    bytesWritten == -1 && (errno == EAGAIN || errno == EWOULDBLOCK) -> delay(1)
+                    else -> {
+                        logger.w {
+                            "[serial.write.fail] ${info.id} fd=$portFd written=$offset " +
+                                "expected=${data.size} errno=$errno op=$operationId"
+                        }
+                        return@withLock false
+                    }
+                }
             }
+            val completed = offset == data.size
+            if (completed) {
+                logger.d { "[serial.write.ok] ${info.id} ${data.size}B op=$operationId" }
+            } else {
+                logger.w { "[serial.write.cancel] ${info.id} written=$offset expected=${data.size} op=$operationId" }
+            }
+            completed
         }
-        offset == data.size
     }
 
     override suspend fun setDtr(enabled: Boolean): Boolean = writeMutex.withLock {
@@ -268,7 +314,7 @@ class PosixSerialPort(
     }
 
     override fun close() {
-        logger.d { "close serial port [${info.id}]" }
+        logger.i { "[serial.close] ${info.id} reason=caller" }
         runBlocking {
             lifecycleMutex.withLock {
                 writeMutex.withLock { closeInternal() }
@@ -292,16 +338,20 @@ class PosixSerialPort(
         openStateFlow.value = false
         job?.cancel()
         if (portFd != -1) runCatching { close(portFd) }
+        logger.i { "[serial.cleanup] ${info.id} fd=$portFd state=closed" }
         return job
     }
 
     private fun isCurrent(portFd: Int, token: Long): Boolean =
         fd == portFd && generation == token
 
-    private suspend fun closeIfCurrent(portFd: Int, token: Long) {
+    private suspend fun closeIfCurrent(portFd: Int, token: Long, reason: String) {
         lifecycleMutex.withLock {
             writeMutex.withLock {
-                if (isCurrent(portFd, token)) closeInternal()
+                if (isCurrent(portFd, token)) {
+                    logger.w { "[serial.disconnect] ${info.id} fd=$portFd evidence=$reason" }
+                    closeInternal()
+                }
             }
         }
     }

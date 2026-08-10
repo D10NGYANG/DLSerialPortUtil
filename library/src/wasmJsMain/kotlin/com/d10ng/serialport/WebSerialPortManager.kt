@@ -54,7 +54,7 @@ object WebSerialPortManager : ISerialPortManager {
      */
     override fun isSupported(): Boolean {
         val supported = navigator.serial != null
-        logger.i { "isSupported: $supported" }
+        logger.i { "[serial.capability] adapter=web-serial supported=$supported" }
         return supported
     }
     
@@ -68,7 +68,8 @@ object WebSerialPortManager : ISerialPortManager {
 
         val ports = navigator.serial!!.getPorts().await<JsArray<SerialPort>>()
         val result = ports.toArray().map { it.toPortInfo() }
-        logger.i { "listPorts found: ${result.size}" }
+        result.forEach { logger.d { "[serial.list.port] ${it.id} description=${it.description}" } }
+        logger.i { "[serial.list] source=authorized-web-ports count=${result.size}" }
         return result
     }
 
@@ -84,7 +85,7 @@ object WebSerialPortManager : ISerialPortManager {
         portInfo: SerialPortInfo,
         config: SerialPortConfig
     ): BaseSerialPort {
-        logger.i { "open request: ${portInfo.id}" }
+        logger.i { "[serial.open.request] ${portInfo.id} ${serialConfigFields(config)}" }
         return WebSerialPort(portInfo, config).apply { open() }
     }
 

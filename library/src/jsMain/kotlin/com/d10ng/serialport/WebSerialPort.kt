@@ -1,6 +1,7 @@
 package com.d10ng.serialport
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -9,8 +10,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.await
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.khronos.webgl.Uint8Array
 import kotlin.js.Promise
 
@@ -25,6 +29,7 @@ class WebSerialPort(
 ): BaseSerialPort(info, config) {
     
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val writeMutex = Mutex()
     private var sp: dynamic = null
     private var reader: dynamic = null
     private var writer: dynamic = null
@@ -57,7 +62,7 @@ class WebSerialPort(
         }
         
         runCatching {
-            logger.d { "open serial port [${info.id}], config: $config" }
+            logger.i { "[serial.open] ${info.id} ${serialConfigFields(config)}" }
             // 获取串口对象
             sp = info.obj ?: throw Exception("Serial port object is null")
             
@@ -79,8 +84,9 @@ class WebSerialPort(
             startRead()
             
             openStateFlow.value = true
+            logger.i { "[serial.open.ok] ${info.id}" }
         }.onFailure { exception ->
-            logger.w { "open fail: ${exception.message}" }
+            logger.w { "[serial.open.fail] ${info.id} error=${exception.serialContext()}" }
             runCatching { closeAndAwait() }
                 .onFailure { closeError ->
                     logger.w { "cleanup serial port [${info.id}] after open failure: ${closeError.message}" }
@@ -92,10 +98,15 @@ class WebSerialPort(
 
     private fun startRead() {
         readJob = scope.launch {
+            var disconnectReason: String? = null
+            logger.i { "[serial.read.start] ${info.id}" }
             loop@ while (isActive && sp != null) {
-                runCatching {
+                try {
                     val result = (reader!!.read() as Promise<dynamic>).await()
-                    if (result.done) break@loop
+                    if (result.done) {
+                        disconnectReason = "readable-stream-done"
+                        break@loop
+                    }
                     if (result.value != null) {
                         // 直接将Uint8Array转换为ByteArray并处理
                         val uint8Array = result.value!!
@@ -103,31 +114,50 @@ class WebSerialPort(
                         for (i in 0 until uint8Array.length) {
                             byteArray[i] = uint8Array[i]
                         }
-                        logger.d { "RX HEX: ${byteArray.toHexString(HexFormat.UpperCase)}" }
-                        logger.d { "RX STR: ${byteArray.decodeToString()}" }
-                        outputDataFlow.emit(byteArray)
+                        emitReceived(byteArray)
                     }
-                }.onFailure { exception ->
-                    logger.w { "read fail: ${exception.message}" }
-                    break@loop
+                } catch (exception: CancellationException) {
+                    throw exception
+                } catch (exception: Throwable) {
+                    if (sp?.connected == false || exception.hasDefinitiveDisconnectEvidence()) {
+                        disconnectReason = if (sp?.connected == false) "web-serial-connected=false" else exception.serialContext()
+                        break@loop
+                    }
+                    logger.w { "[serial.read.fail] ${info.id} action=retry error=${exception.serialContext()}" }
+                    delay(50)
                 }
             }
-            close()
+            logger.i { "[serial.read.stop] ${info.id} reason=${disconnectReason ?: "cancelled-or-replaced"}" }
+            disconnectReason?.let {
+                logger.w { "[serial.disconnect] ${info.id} evidence=$it" }
+                beginClose(it)
+            }
         }
     }
 
-    override suspend fun write(data: ByteArray): Boolean {
-        return runCatching {
-            // 直接将ByteArray转换为Uint8Array
-            logger.d { "TX HEX: ${data.toHexString(HexFormat.UpperCase)}" }
-            logger.d { "TX STR: ${data.decodeToString()}" }
-            val uint8Array = Uint8Array(data.size)
-            uint8Array.set(data.toTypedArray())
-            (writer!!.write(uint8Array) as Promise<dynamic>).await()
-            true
-        }.onFailure { exception ->
-            logger.w { "write fail: ${exception.message}"}
-        }.getOrDefault(false)
+    override suspend fun write(data: ByteArray): Boolean = withWriteOperation(data.size) { operationId ->
+        writeMutex.withLock {
+            val currentWriter = writer
+            if (currentWriter == null) {
+                logger.w { "[serial.write.fail] ${info.id} op=$operationId reason=not-open" }
+                return@withLock false
+            }
+            return@withLock try {
+                logger.d { "[serial.write.start] ${info.id} op=$operationId" }
+                logger.d { serialPayloadLog("tx", info.id, data, operationId) }
+                val uint8Array = Uint8Array(data.size)
+                uint8Array.set(data.toTypedArray())
+                (currentWriter.write(uint8Array) as Promise<dynamic>).await()
+                logger.d { "[serial.write.ok] ${info.id} ${data.size}B op=$operationId" }
+                true
+            } catch (exception: CancellationException) {
+                logger.w { "[serial.write.cancel] ${info.id} op=$operationId late-browser-completion=possible" }
+                throw exception
+            } catch (exception: Throwable) {
+                logger.w { "[serial.write.fail] ${info.id} op=$operationId error=${exception.serialContext()}" }
+                false
+            }
+        }
     }
 
     override suspend fun setDtr(enabled: Boolean): Boolean {
@@ -155,18 +185,18 @@ class WebSerialPort(
     }
 
     override fun close() {
-        beginClose()
+        beginClose("caller")
     }
 
     override suspend fun closeAndAwait() {
-        beginClose().await()
+        beginClose("caller").await()
     }
 
-    private fun beginClose(): Deferred<Unit> {
+    private fun beginClose(reason: String): Deferred<Unit> {
         closeJob?.let { return it }
         openStateFlow.value = false
         return scope.async(start = CoroutineStart.LAZY) {
-            closeInternal()
+            closeInternal(reason)
         }.also { job ->
             closeJob = job
             job.invokeOnCompletion { error ->
@@ -178,8 +208,8 @@ class WebSerialPort(
         }
     }
 
-    private suspend fun closeInternal() {
-        logger.d { "close serial port [${info.id}]" }
+    private suspend fun closeInternal(reason: String) {
+        logger.i { "[serial.close] ${info.id} reason=$reason" }
         val port = sp
         val currentReader = reader
         val currentWriter = writer
@@ -214,6 +244,7 @@ class WebSerialPort(
             if (writer === currentWriter) writer = null
             if (readJob === currentReadJob) readJob = null
             openStateFlow.value = false
+            logger.i { "[serial.cleanup] ${info.id} state=closed" }
         }
     }
 }
