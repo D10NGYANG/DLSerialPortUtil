@@ -101,7 +101,7 @@ Android 是特殊情况：默认入口返回 `AndroidSerialPortManager`，只处
 
 | 成员 | 实现约定 |
 | --- | --- |
-| `open()` | 重复打开同一对象时记录警告并返回；打开失败抛出异常并释放已经获得的资源 |
+| `open()` | 重复打开同一对象时记录警告并返回；打开失败或交付前取消抛出异常并释放已经获得的资源 |
 | `write(data)` | 成功完整提交给底层实现时返回 `true`；未打开、超时、部分写入或底层失败返回 `false`，不代表设备业务处理完成 |
 | `outputDataFlow` | 接收底层读取到的字节块，不代表完整业务报文 |
 | `openStateFlow` | 只暴露已打开/未打开，不表达 Opening 或 Closing 中间状态 |
@@ -135,7 +135,7 @@ stateDiagram-v2
 2. 关闭先使当前 generation 失效，再取消读任务并释放句柄。
 3. 全平台并发写入会按端口串行化，避免字节块在库内部交错；控制线操作与底层写句柄也由平台锁协调。
 4. POSIX 只继续写尚未提交的尾部字节；不会重发已写入部分。只有完整写完才返回 `true`。
-5. 普通读取异常退避重试；普通写失败、超时和取消只结束当前操作，不改变 `openStateFlow`。
+5. 普通读取异常退避重试；Web 会释放失效 reader 并从新的 readable 获取 reader；普通写失败、超时和取消只结束当前操作，不改变 `openStateFlow`。
 6. 自动清理必须有明确证据：Android/JVM stream EOF 或失效句柄、USB 拔出/设备从枚举消失、JVM `isOpen=false`、POSIX `EBADF/ENODEV/EIO`、Web readable stream `done` 或 `connected=false`。
 7. 每次自动清理先记录 `[serial.disconnect]` 和 `evidence`，再按平台释放资源。
 6. `close()` 返回不等于所有平台的读任务都已经结束；需要确定性释放时统一使用 `closeAndAwait()`。
@@ -196,7 +196,7 @@ stateDiagram-v2
 
 - Linux 扫描 `/dev/tty*`；macOS 扫描 `/dev/tty.*` 和 `/dev/cu.*`。
 - 列表只包含字符设备且能够以读写方式打开的节点。枚举检查会短暂打开再关闭设备。
-- 文件描述符保持非阻塞，使用 raw termios；读取在 `EAGAIN` 时短暂挂起以检查取消状态。
+- 文件描述符保持非阻塞，使用 raw termios；校验 generation 与 read 在生命周期锁内完成，emit 在锁外。零长度读取退避，并用 poll 的 HUP/ERR 区分挂断；读取在 `EAGAIN` 时短暂挂起以检查取消状态。
 - 软件和硬件流控均关闭；停止位和校验位标志会显式清除后再设置，避免继承旧设备配置。
 - 写入期限为 2 秒，支持部分写入的尾部续写、`EINTR/EAGAIN` 和 DTR/RTS ioctl。
 - 不公开设备热插拔事件，也不提供 POSIX 目标之外的 Unix 平台实现。
@@ -206,7 +206,7 @@ stateDiagram-v2
 - `isSupported()` 只检查 `navigator.serial` 是否存在，不保证安全上下文、浏览器策略或设备权限允许操作。
 - `listPorts()` 只返回当前站点已经授权的端口，不弹出选择器。
 - `requestPort()` 必须由点击等用户手势直接触发；用户取消返回 `null`，其他浏览器异常继续抛出。
-- 使用 Web `ReadableStream` / `WritableStream`；`close()` 启动异步清理，`closeAndAwait()` 等待读取取消、锁释放和 `SerialPort.close()` 完成。
+- Web 打开/关闭使用同一生命周期锁；不可取消的 open Promise 会等待完成后再检查调用方取消并清理迟到句柄。使用 Web `ReadableStream` / `WritableStream`；`close()` 启动异步清理，`closeAndAwait()` 等待读取取消、锁释放和 `SerialPort.close()` 完成。
 - 只有 Web 管理器对外发布 `Connected` / `Disconnected`。事件状态按对象身份和短时间逻辑状态去重，内部跟踪数量有上限。
 - 端口 ID 只在当前页面有效。设备断开会移除旧对象映射，再次接入必须使用新的 `SerialPortInfo`。
 - DTR/RTS 最终通过 `setSignals()`；浏览器、系统或设备拒绝时返回 `false`。

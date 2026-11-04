@@ -55,7 +55,6 @@ import com.d10ng.serialport.SerialPortEvent
 import com.d10ng.serialport.SerialPortInfo
 import com.d10ng.serialport.StopBits
 import com.d10ng.serialport.getPlatformSerialPortManager
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -77,7 +76,7 @@ private data class Msg(val time: String, val content: String, val type: MsgType)
 @Composable
 fun App() {
     MaterialTheme {
-        val scope = rememberCoroutineScope { Dispatchers.Default }
+        val scope = rememberCoroutineScope()
         val manager = remember { getPlatformSerialPortManager() }
 
         // 串口与配置状态
@@ -104,6 +103,7 @@ fun App() {
                 val ts = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
                     .format(LocalDateTime.Format { byUnicodePattern("HH:mm:ss.SSS") })
                 messages.add(Msg(ts, content, type))
+                if (messages.size > MAX_MESSAGES) messages.removeAt(0)
             }
         }
 
@@ -186,15 +186,21 @@ fun App() {
                 }
             }
             launch {
-                p.outputDataFlow.collect { data ->
-                    val text = data.decodeToString()
-                    addMsg(text, MsgType.RECEIVED)
+                val decoder = Utf8StreamDecoder()
+                try {
+                    p.outputDataFlow.collect { data ->
+                        val text = decoder.decode(data)
+                        if (text.isNotEmpty()) addMsg(text, MsgType.RECEIVED)
+                    }
+                } finally {
+                    val tail = decoder.finish()
+                    if (tail.isNotEmpty()) addMsg(tail, MsgType.RECEIVED)
                 }
             }
         }
 
         // 新消息自动滚动到底部
-        LaunchedEffect(messages.size) {
+        LaunchedEffect(messages.lastOrNull()) {
             if (messages.isNotEmpty()) {
                 listState.animateScrollToItem(messages.lastIndex)
             }
@@ -542,7 +548,7 @@ fun App() {
                                     }.getOrDefault(false)
                                     if (ok) {
                                         addMsg(msg, MsgType.SENT)
-                                        input = ""
+                                        if (input.trim() == msg) input = ""
                                     } else {
                                         addMsg("发送数据失败", MsgType.SYSTEM)
                                     }

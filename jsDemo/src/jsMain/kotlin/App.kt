@@ -21,6 +21,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import com.d10ng.serialport.demo.MAX_MESSAGES
+import com.d10ng.serialport.demo.Utf8StreamDecoder
 import kotlinx.dom.addClass
 import kotlinx.dom.removeClass
 import org.w3c.dom.Element
@@ -33,6 +37,7 @@ import org.w3c.dom.events.KeyboardEvent
 import kotlin.js.Date
 
 // 全局变量
+private var observationJob: Job? = null
 private var currentPort: BaseSerialPort? = null
 private var selectedPortInfo: SerialPortInfo? = null
 private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -154,25 +159,32 @@ private fun connectPort() {
             val port = WebSerialPortManager.open(portInfo, config)
             currentPort = port
             
-            // 监听串口状态
-            launch {
+            observationJob?.cancel()
+            observationJob = scope.launch observation@{
+                launch {
+                    val decoder = Utf8StreamDecoder()
+                    try {
+                        port.outputDataFlow.collect { data ->
+                            val message = decoder.decode(data)
+                            if (message.isNotEmpty()) addReceivedMessage(message)
+                        }
+                    } finally {
+                        val tail = decoder.finish()
+                        if (tail.isNotEmpty()) addReceivedMessage(tail)
+                    }
+                }
                 port.openStateFlow.collect { isOpen ->
-                    updateConnectionStatus(isOpen)
-                    if (!isOpen && currentPort != null) {
-                        currentPort = null
-                        addSystemMessage("串口连接已断开")
+                    if (currentPort === port) {
+                        updateConnectionStatus(isOpen)
+                        if (!isOpen) {
+                            currentPort = null
+                            addSystemMessage("串口连接已断开")
+                            this@observation.cancel()
+                        }
                     }
                 }
             }
-            
-            // 监听接收数据
-            launch {
-                port.outputDataFlow.collect { data ->
-                    val message = data.decodeToString()
-                    addReceivedMessage(message)
-                }
-            }
-            
+
             addSystemMessage("串口连接成功")
             
         } catch (e: Exception) {
@@ -188,6 +200,8 @@ private fun connectPort() {
 private fun disconnectPort() {
     val port = currentPort ?: return
     currentPort = null
+    observationJob?.cancel()
+    observationJob = null
     scope.launch {
         try {
             setConnecting(true)
@@ -245,7 +259,7 @@ private fun setConnecting(connecting: Boolean) {
         connectBtnText?.textContent = "连接中..."
         connectBtnLoading?.style?.display = "inline-block"
     } else {
-        connectBtn?.disabled = false
+        connectBtn?.disabled = selectedPortInfo == null && currentPort == null
         connectBtnLoading?.style?.display = "none"
     }
 }
@@ -307,7 +321,7 @@ private fun sendMessage() {
             
             if (success) {
                 addSentMessage(message)
-                input.value = ""
+                if (input.value.trim() == message) input.value = ""
             } else {
                 showError("发送数据失败")
             }
@@ -347,6 +361,11 @@ private fun addMessage(content: String, className: String) {
     messageDiv.appendChild(headerDiv)
     messageDiv.appendChild(contentDiv)
     container?.appendChild(messageDiv)
+    if (container != null) {
+        while (container.childElementCount > MAX_MESSAGES) {
+            container.firstElementChild?.let { container.removeChild(it) }
+        }
+    }
     
     // 自动滚动到底部
     container?.scrollTop = container.scrollHeight.toDouble()

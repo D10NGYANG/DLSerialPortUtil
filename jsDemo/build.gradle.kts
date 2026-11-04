@@ -12,6 +12,7 @@ kotlin {
         binaries.executable()
     }
     sourceSets {
+        commonMain { kotlin.srcDir("../demoShared/src/commonMain/kotlin") }
         commonMain.dependencies {
             // 协程
             implementation(libs.kotlinx.coroutines)

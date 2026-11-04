@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.github.D10NGYANG"
-version = "0.7.0"
+version = "0.7.1"
 
 kotlin {
     jvmToolchain(8)
@@ -20,12 +20,12 @@ kotlin {
     }
     jvm()
     js(IR) {
-        browser()
+        browser { testTask { useKarma { useChromiumHeadless() } } }
         binaries.library()
     }
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
-        browser()
+        browser { testTask { useKarma { useChromiumHeadless() } } }
         binaries.library()
     }
     linuxX64()
@@ -34,11 +34,12 @@ kotlin {
     macosArm64()
 
     sourceSets {
+        commonTest { kotlin.srcDir("../demoShared/src/commonMain/kotlin") }
         commonMain.dependencies {
             // 协程
-            implementation(libs.kotlinx.coroutines)
+            api(libs.kotlinx.coroutines)
             // 日志库
-            implementation(libs.dl.log)
+            api(libs.dl.log)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
@@ -88,21 +89,6 @@ afterEvaluate {
                         url = uri(repositoryPath)
                     }
                 }
-
-            val username = providers.gradleProperty("bds100MavenUsername").orNull
-                ?.takeIf { it.isNotBlank() }
-            val password = providers.gradleProperty("bds100MavenPassword").orNull
-                ?.takeIf { it.isNotBlank() }
-            if (username != null && password != null) {
-                maven {
-                    name = "bds100"
-                    credentials {
-                        this.username = username
-                        this.password = password
-                    }
-                    setUrl("https://nexus.bds100.com/repository/maven-releases/")
-                }
-            }
         }
     }
 }

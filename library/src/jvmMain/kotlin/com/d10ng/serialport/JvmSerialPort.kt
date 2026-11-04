@@ -43,71 +43,78 @@ class JvmSerialPort(
 
     override suspend fun open() {
         lifecycleMutex.withLock {
-            withContext(Dispatchers.IO) {
-                val token = synchronized(stateLock) {
-                    if (sp != null) return@synchronized null
-                    generation += 1
-                    generation
-                }
-                if (token == null) {
-                    logger.w { "Serial port [${info.id}] already opened" }
-                    return@withContext
-                }
+            var openingAttempt = false
+            try {
+                withContext(Dispatchers.IO) {
+                    val token = synchronized(stateLock) {
+                        if (sp != null) return@synchronized null
+                        generation += 1
+                        generation
+                    }
+                    if (token == null) {
+                        logger.w { "Serial port [${info.id}] already opened" }
+                        return@withContext
+                    }
 
-                var openedPort: SerialPort? = null
-                runCatching {
-                    logger.i { "[serial.open] ${info.id} ${serialConfigFields(config)}" }
-                    val candidate = info.obj as? SerialPort
-                        ?: throw IllegalArgumentException(
-                            "Serial port [${info.id}] does not contain a jSerialComm handle"
-                        )
-                    openedPort = candidate
-                    val stopBits = when (config.stopBits) {
-                        StopBits.V1 -> SerialPort.ONE_STOP_BIT
-                        StopBits.V2 -> SerialPort.TWO_STOP_BITS
-                    }
-                    check(candidate.setComPortParameters(
-                        config.baudRate.intValue,
-                        config.dataBits.intValue,
-                        stopBits,
-                        config.parity.intValue
-                    )) { "Serial port [${info.id}] rejected communication parameters" }
-                    check(candidate.setFlowControl(SerialPort.FLOW_CONTROL_DISABLED)) {
-                        "Serial port [${info.id}] rejected flow=none"
-                    }
-                    check(candidate.setComPortTimeouts(
-                        SerialPort.TIMEOUT_READ_SEMI_BLOCKING or SerialPort.TIMEOUT_WRITE_BLOCKING,
-                        0,
-                        WRITE_TIMEOUT_MILLIS
-                    )) { "Serial port [${info.id}] rejected read/write timeouts" }
-                    check(candidate.openPort()) {
-                        "Serial port [${info.id}] open failed code=${candidate.lastErrorCode} location=${candidate.lastErrorLocation}"
-                    }
-                    val installed = synchronized(stateLock) {
-                        if (generation == token && sp == null) {
-                            sp = candidate
-                            true
-                        } else {
-                            false
+                    openingAttempt = true
+                    var openedPort: SerialPort? = null
+                    runCatching {
+                        logger.i { "[serial.open] ${info.id} ${serialConfigFields(config)}" }
+                        val candidate = info.obj as? SerialPort
+                            ?: throw IllegalArgumentException(
+                                "Serial port [${info.id}] does not contain a jSerialComm handle"
+                            )
+                        openedPort = candidate
+                        val stopBits = when (config.stopBits) {
+                            StopBits.V1 -> SerialPort.ONE_STOP_BIT
+                            StopBits.V2 -> SerialPort.TWO_STOP_BITS
                         }
-                    }
-                    check(installed) { "Serial port [${info.id}] was closed while opening" }
-                    val port = candidate
-                    startRead(port, token)
-                    logger.i { "[serial.open.ok] ${info.id}" }
-                }.onFailure { exception ->
-                    logger.w { "[serial.open.fail] ${info.id} error=${exception.serialContext()}" }
-                    synchronized(stateLock) {
-                        if (generation == token) generation += 1
-                        if (sp === openedPort) {
-                            sp = null
-                            readJob = null
+                        check(candidate.setComPortParameters(
+                            config.baudRate.intValue,
+                            config.dataBits.intValue,
+                            stopBits,
+                            config.parity.intValue
+                        )) { "Serial port [${info.id}] rejected communication parameters" }
+                        check(candidate.setFlowControl(SerialPort.FLOW_CONTROL_DISABLED)) {
+                            "Serial port [${info.id}] rejected flow=none"
                         }
+                        check(candidate.setComPortTimeouts(
+                            SerialPort.TIMEOUT_READ_SEMI_BLOCKING or SerialPort.TIMEOUT_WRITE_BLOCKING,
+                            0,
+                            WRITE_TIMEOUT_MILLIS
+                        )) { "Serial port [${info.id}] rejected read/write timeouts" }
+                        check(candidate.openPort()) {
+                            "Serial port [${info.id}] open failed code=${candidate.lastErrorCode} location=${candidate.lastErrorLocation}"
+                        }
+                        val installed = synchronized(stateLock) {
+                            if (generation == token && sp == null) {
+                                sp = candidate
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        check(installed) { "Serial port [${info.id}] was closed while opening" }
+                        val port = candidate
+                        startRead(port, token)
+                        logger.i { "[serial.open.ok] ${info.id}" }
+                    }.onFailure { exception ->
+                        logger.w { "[serial.open.fail] ${info.id} error=${exception.serialContext()}" }
+                        synchronized(stateLock) {
+                            if (generation == token) generation += 1
+                            if (sp === openedPort) {
+                                sp = null
+                                readJob = null
+                            }
+                        }
+                        runCatching { openedPort?.closePort() }
+                        openStateFlow.value = false
+                        throw exception
                     }
-                    runCatching { openedPort?.closePort() }
-                    openStateFlow.value = false
-                    throw exception
                 }
+            } catch (exception: Throwable) {
+                if (openingAttempt) close()
+                throw exception
             }
         }
     }

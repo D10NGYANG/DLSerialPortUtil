@@ -17,12 +17,14 @@ import com.d10ng.serialport.BaseSerialPort
 import com.d10ng.serialport.SerialPortConfig
 import com.d10ng.serialport.SerialPortInfo
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import com.d10ng.serialport.demo.MAX_MESSAGES
+import com.d10ng.serialport.demo.Utf8StreamDecoder
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -187,8 +189,15 @@ class SerialPortViewModel(application: Application) : AndroidViewModel(applicati
         portObservationJob?.cancel()
         val observationJob = viewModelScope.launch observation@{
             launch {
-                port.outputDataFlow.collect { data ->
-                    addMessage("接收", String(data, Charsets.UTF_8), MessageType.RECEIVED)
+                val decoder = Utf8StreamDecoder()
+                try {
+                    port.outputDataFlow.collect { data ->
+                        val text = decoder.decode(data)
+                        if (text.isNotEmpty()) addMessage("接收", text, MessageType.RECEIVED)
+                    }
+                } finally {
+                    val tail = decoder.finish()
+                    if (tail.isNotEmpty() && _currentPort.value === port) addMessage("接收", tail, MessageType.RECEIVED)
                 }
             }
             port.openStateFlow.collect { isOpen ->
@@ -276,18 +285,20 @@ class SerialPortViewModel(application: Application) : AndroidViewModel(applicati
     /**
      * 发送数据
      */
-    fun sendMessage(message: String) {
+    fun sendMessage(message: String, onSent: () -> Unit = {}) {
         val port = _currentPort.value
         if (port == null || !_isConnected.value) {
             _errorMessage.value = "串口未连接"
             return
         }
         
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch {
             try {
                 val data = "${message}\r\n".toByteArray(Charsets.UTF_8)
                 val success = port.write(data)
+                if (_currentPort.value !== port) return@launch
                 if (success) {
+                    onSent()
                     addMessage("发送", message, MessageType.SENT)
                 } else {
                     _errorMessage.value = "发送数据失败"
@@ -303,8 +314,8 @@ class SerialPortViewModel(application: Application) : AndroidViewModel(applicati
     /**
      * 发送数据（sendMessage方法的别名）
      */
-    fun sendData(data: String) {
-        sendMessage(data)
+    fun sendData(data: String, onSent: () -> Unit = {}) {
+        sendMessage(data, onSent)
     }
     
     /**
@@ -338,7 +349,7 @@ class SerialPortViewModel(application: Application) : AndroidViewModel(applicati
             timestamp = timestamp,
             type = type
         )
-        _messages.value = _messages.value + message
+        _messages.update { (it + message).takeLast(MAX_MESSAGES) }
     }
     
     override fun onCleared() {

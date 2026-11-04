@@ -2,6 +2,8 @@
 
 package com.d10ng.serialport.cli
 
+import com.d10ng.serialport.demo.Utf8StreamDecoder
+import kotlinx.coroutines.CancellationException
 import com.d10ng.serialport.BaudRate
 import com.d10ng.serialport.DataBits
 import com.d10ng.serialport.Parity
@@ -69,6 +71,8 @@ fun main() = runBlocking {
         val config = selectConfig()
         // 进入通讯界面
         runChat(portInfo, config)
+    } catch (_: CancellationException) {
+        // Selection cancelled; the terminal is restored below.
     } finally {
         Terminal.showCursor()
         Terminal.restore()
@@ -154,8 +158,10 @@ private suspend fun runChat(portInfo: SerialPortInfo, config: SerialPortConfig) 
 
     // 收数据
     val jobRecv = scope.launch {
+        val decoder = Utf8StreamDecoder()
         port.outputDataFlow.collect { data ->
-            val preview = data.decodeToString()
+            val preview = decoder.decode(data)
+            if (preview.isEmpty()) return@collect
             appendLog("RX | $preview")
             val snapshot = logMutex.withLock { logs.toList() }
             renderChat(portInfo, config, snapshot, "")
@@ -163,47 +169,50 @@ private suspend fun runChat(portInfo: SerialPortInfo, config: SerialPortConfig) 
     }
 
     // UI 输入
-    val inputBuffer = StringBuilder()
+    try {
+        val inputBuffer = StringBuilder()
 
-    run {
-        val snapshot = logMutex.withLock { logs.toList() }
-        renderChat(portInfo, config, snapshot, inputBuffer.toString())
-    }
-
-    while (true) {
-        val ch = Terminal.readKey()
-        when (ch) {
-            Key.ENTER -> {
-                if (inputBuffer.isNotEmpty()) {
-                    val text = "${inputBuffer}\r\n"
-                    val bytes = text.encodeToByteArray()
-                    if (withContext(Dispatchers.Default) { port.write(bytes) }) {
-                        appendLog("TX | $text")
-                        inputBuffer.clear()
-                    }
-                }
-                val snapshot = logMutex.withLock { logs.toList() }
-                renderChat(portInfo, config, snapshot, inputBuffer.toString())
-            }
-            Key.BACKSPACE -> {
-                if (inputBuffer.isNotEmpty()) inputBuffer.deleteAt(inputBuffer.lastIndex)
-                val snapshot = logMutex.withLock { logs.toList() }
-                renderChat(portInfo, config, snapshot, inputBuffer.toString())
-            }
-            Key.CTRL_C -> {
-                break
-            }
-            is Key.CharKey -> {
-                inputBuffer.append(ch.ch)
-                val snapshot = logMutex.withLock { logs.toList() }
-                renderChat(portInfo, config, snapshot, inputBuffer.toString())
-            }
-            else -> { /* ignore others in chat */ }
+        run {
+            val snapshot = logMutex.withLock { logs.toList() }
+            renderChat(portInfo, config, snapshot, inputBuffer.toString())
         }
-    }
 
-    jobRecv.cancelAndJoin()
-    port.close()
+        while (true) {
+            val ch = Terminal.readKey()
+            when (ch) {
+                Key.ENTER -> {
+                    if (inputBuffer.isNotEmpty()) {
+                        val text = "${inputBuffer}\r\n"
+                        val bytes = text.encodeToByteArray()
+                        if (withContext(Dispatchers.Default) { port.write(bytes) }) {
+                            appendLog("TX | $text")
+                            inputBuffer.clear()
+                        }
+                    }
+                    val snapshot = logMutex.withLock { logs.toList() }
+                    renderChat(portInfo, config, snapshot, inputBuffer.toString())
+                }
+                Key.BACKSPACE -> {
+                    if (inputBuffer.isNotEmpty()) inputBuffer.deleteAt(inputBuffer.lastIndex)
+                    val snapshot = logMutex.withLock { logs.toList() }
+                    renderChat(portInfo, config, snapshot, inputBuffer.toString())
+                }
+                Key.CTRL_C -> {
+                    break
+                }
+                is Key.CharKey -> {
+                    inputBuffer.append(ch.ch)
+                    val snapshot = logMutex.withLock { logs.toList() }
+                    renderChat(portInfo, config, snapshot, inputBuffer.toString())
+                }
+                else -> { /* ignore others in chat */ }
+            }
+        }
+
+    } finally {
+        jobRecv.cancelAndJoin()
+        port.closeAndAwait()
+    }
 }
 
 /** 控制台交互式列表选择器（支持 ↑/↓ 或 j/k 移动，Enter 确认）。返回被选中的索引。 */
@@ -212,6 +221,7 @@ private fun chooseFromList(title: String, items: List<String>, selectedIndex: In
     renderList(title, items, idx)
     while (true) {
         when (val key = Terminal.readKey()) {
+            Key.CTRL_C -> throw CancellationException("Selection cancelled")
             Key.UP -> { if (items.isNotEmpty()) idx = (idx - 1 + items.size) % items.size; renderList(title, items, idx) }
             Key.DOWN -> { if (items.isNotEmpty()) idx = (idx + 1) % items.size; renderList(title, items, idx) }
             Key.ENTER -> return idx

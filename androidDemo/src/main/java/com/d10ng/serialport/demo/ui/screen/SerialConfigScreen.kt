@@ -34,7 +34,6 @@ fun SerialConfigScreen(
     val config by viewModel.config.collectAsState()
     val serialPorts by viewModel.serialPorts.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
     
     var selectedPort by remember { mutableStateOf<SerialPortInfo?>(null) }
     var showPortDialog by remember { mutableStateOf(false) }
@@ -218,12 +217,7 @@ fun SerialConfigScreen(
         )
     }
     
-    // 错误提示
-    errorMessage?.let { message ->
-        LaunchedEffect(message) {
-            // 这里可以显示 SnackBar 或其他错误提示
-        }
-    }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -11,6 +11,7 @@ kotlin {
         }
     }
     sourceSets {
+        commonMain { kotlin.srcDir("../demoShared/src/commonMain/kotlin") }
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines)
         }

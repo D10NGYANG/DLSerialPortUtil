@@ -3,7 +3,7 @@
 Kotlin Multiplatform 串口通讯库。
 
 [![Kotlin Multiplatform](https://img.shields.io/badge/Kotlin-Multiplatform-blueviolet?logo=kotlin&logoColor=white)](#)
-[![Latest](https://img.shields.io/badge/version-0.7.0-blue)](#)
+[![Latest](https://img.shields.io/badge/version-0.7.1-blue)](#)
 [![GitHub stars](https://img.shields.io/github/stars/D10NGYANG/DLSerialPortUtil?logo=github)](https://github.com/D10NGYANG/DLSerialPortUtil/stargazers)
 
 **在线demo测试：**[https://d10ngyang.github.io/DLSerialPortUtil/](https://d10ngyang.github.io/DLSerialPortUtil/)
@@ -69,7 +69,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.7.0")
+                implementation("com.github.D10NGYANG:DLSerialPortUtil:0.7.1")
             }
         }
     }
@@ -78,7 +78,9 @@ kotlin {
 
 ## 日志输出控制
 
-本库内部使用 [DLLogUtil](https://github.com/D10NGYANG/DLLogUtil) 进行日志记录。若需要在你的项目中控制日志输出等级，或收集日志，请在你的 KMP 模块添加日志库依赖（建议在 `commonMain`）：
+0.7.1 使用 DLLogUtil 0.3.0。升级行为见 [0.7.1 升级说明](MIGRATION_0.7.1.md)，验证范围见 [验证记录](UPGRADE_VERIFICATION.md)。
+
+本库内部使用 [DLLogUtil](https://github.com/D10NGYANG/DLLogUtil) 进行日志记录。自 0.7.1 起已通过 `api` 暴露日志类型。如需在消费者中显式指定日志版本，可在 KMP 模块添加依赖（建议在 `commonMain`）：
 
 ```kotlin
 kotlin {
@@ -86,7 +88,7 @@ kotlin {
         val commonMain by getting {
             dependencies {
                 // 日志库（用于控制输出等级）
-                implementation("com.github.D10NGYANG:DLLogUtil:0.2.1")
+                implementation("com.github.D10NGYANG:DLLogUtil:0.3.0")
             }
         }
     }
@@ -272,7 +274,7 @@ scope.launch {
 - 只有调用方 `close/closeAndAwait`，或 USB 拔出、文件描述符失效、Web stream 明确结束等断开证据才会清理连接；原因会写入 `[serial.disconnect]`
 - `outputDataFlow` 按底层 read 块发布，不提供协议拆包。它有限 replay 64 个块以覆盖打开与订阅之间的竞态；无订阅者且缓冲溢出时替换最旧块并记录 `[serial.rx.drop]`，有订阅者时通过挂起读循环施加背压
 
-升级详情见 [MIGRATION_0.7.0.md](MIGRATION_0.7.0.md)，实现约束见 [library/ARCHITECTURE.md](library/ARCHITECTURE.md)，依赖决策见 [DEPENDENCY_AUDIT.md](DEPENDENCY_AUDIT.md)。
+升级详情见 [MIGRATION_0.7.1.md](MIGRATION_0.7.1.md)，实现约束见 [library/ARCHITECTURE.md](library/ARCHITECTURE.md)，依赖决策见 [DEPENDENCY_AUDIT.md](DEPENDENCY_AUDIT.md)。
 
 ## Demo 示例
 本仓库提供多平台示例以帮助你快速集成：

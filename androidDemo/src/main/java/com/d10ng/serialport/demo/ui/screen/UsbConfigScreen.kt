@@ -35,7 +35,6 @@ fun UsbConfigScreen(
     val config by viewModel.config.collectAsState()
     val usbPorts by viewModel.usbPorts.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
     
     var selectedPort by remember { mutableStateOf<SerialPortInfo?>(null) }
     
@@ -232,12 +231,7 @@ fun UsbConfigScreen(
         }
     }
     
-    // 错误提示
-    errorMessage?.let { message ->
-        LaunchedEffect(message) {
-            // 这里可以显示 SnackBar 或其他错误提示
-        }
-    }
+
 }
 
 @Composable

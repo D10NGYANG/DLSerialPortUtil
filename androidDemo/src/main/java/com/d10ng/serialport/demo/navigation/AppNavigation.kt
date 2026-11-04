@@ -1,6 +1,13 @@
 package com.d10ng.serialport.demo.navigation
 
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -20,71 +27,82 @@ fun AppNavigation(
     navController: NavHostController = rememberNavController(),
     viewModel: SerialPortViewModel = viewModel()
 ) {
-    NavHost(
-        navController = navController,
-        startDestination = NavRoutes.HOME
-    ) {
-        // 首页
-        composable(NavRoutes.HOME) {
-            HomeScreen(
-                onNavigateToSerialConfig = {
-                    navController.navigate(NavRoutes.SERIAL_CONFIG)
-                },
-                onNavigateToUsbConfig = {
-                    navController.navigate(NavRoutes.USB_CONFIG)
-                }
-            )
+    val error by viewModel.errorMessage.collectAsState()
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(error) {
+        error?.let {
+            snackbar.showSnackbar(it)
+            viewModel.clearError()
         }
-        
-        // 机内串口配置页面
-        composable(NavRoutes.SERIAL_CONFIG) {
-            SerialConfigScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                },
-                onNavigateToCommunication = {
-                    navController.navigate(NavRoutes.COMMUNICATION) {
-                        // 清除返回栈，防止用户通过返回键回到配置页面
-                        popUpTo(NavRoutes.HOME) {
-                            inclusive = false
-                        }
+    }
+    Box(Modifier.fillMaxSize()) {
+        NavHost(
+            navController = navController,
+            startDestination = NavRoutes.HOME
+        ) {
+            // 首页
+            composable(NavRoutes.HOME) {
+                HomeScreen(
+                    onNavigateToSerialConfig = {
+                        navController.navigate(NavRoutes.SERIAL_CONFIG)
+                    },
+                    onNavigateToUsbConfig = {
+                        navController.navigate(NavRoutes.USB_CONFIG)
                     }
-                },
-                viewModel = viewModel
-            )
-        }
+                )
+            }
         
-        // USB串口配置页面
-        composable(NavRoutes.USB_CONFIG) {
-            UsbConfigScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                },
-                onNavigateToCommunication = {
-                    navController.navigate(NavRoutes.COMMUNICATION) {
-                        // 清除返回栈，防止用户通过返回键回到配置页面
-                        popUpTo(NavRoutes.HOME) {
-                            inclusive = false
+            // 机内串口配置页面
+            composable(NavRoutes.SERIAL_CONFIG) {
+                SerialConfigScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onNavigateToCommunication = {
+                        navController.navigate(NavRoutes.COMMUNICATION) {
+                            // 清除返回栈，防止用户通过返回键回到配置页面
+                            popUpTo(NavRoutes.HOME) {
+                                inclusive = false
+                            }
                         }
-                    }
-                },
-                viewModel = viewModel
-            )
-        }
+                    },
+                    viewModel = viewModel
+                )
+            }
         
-        // 通讯测试页面
-        composable(NavRoutes.COMMUNICATION) {
-            CommunicationScreen(
-                onNavigateHome = {
-                    // 返回首页并清除所有返回栈
-                    navController.navigate(NavRoutes.HOME) {
-                        popUpTo(NavRoutes.HOME) {
-                            inclusive = true
+            // USB串口配置页面
+            composable(NavRoutes.USB_CONFIG) {
+                UsbConfigScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onNavigateToCommunication = {
+                        navController.navigate(NavRoutes.COMMUNICATION) {
+                            // 清除返回栈，防止用户通过返回键回到配置页面
+                            popUpTo(NavRoutes.HOME) {
+                                inclusive = false
+                            }
                         }
-                    }
-                },
-                viewModel = viewModel
-            )
+                    },
+                    viewModel = viewModel
+                )
+            }
+        
+            // 通讯测试页面
+            composable(NavRoutes.COMMUNICATION) {
+                CommunicationScreen(
+                    onNavigateHome = {
+                        // 返回首页并清除所有返回栈
+                        navController.navigate(NavRoutes.HOME) {
+                            popUpTo(NavRoutes.HOME) {
+                                inclusive = true
+                            }
+                        }
+                    },
+                    viewModel = viewModel
+                )
+            }
         }
+    SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
     }
 }

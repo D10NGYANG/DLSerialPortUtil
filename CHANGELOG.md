@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.1 - 2026-11-04
+
+- 升级 Gradle 8.14.6、Kotlin 2.2.21、Coroutines 1.11.0、DLLogUtil 0.3.0、Compose 1.9.3 与 JetBrains Lifecycle 2.9.6。
+- Web 工具链升级 webpack 5.112.2、dev-server 5.2.6、Mocha 12.0.3 和 Node 22.23.4；Wasm 复用受锁文件管理的 JS 工具，依赖检查插件升级 0.67.0。
+- 修复 Web 打开/关闭竞争、取消后迟到句柄清理和读取错误恢复；修复 JVM/Android 打开取消泄漏，以及 POSIX fd 复用竞争和 EOF 空转。
+- 修复 Demo 错误反馈、消息并发覆盖、订阅泄漏、无界历史、CLI Ctrl+C 和跨块 UTF-8 解码。
+- 公共 Flow 和 Logger 依赖改为 api，支持仅声明本库的消费者；增加真实 PTY、浏览器和 Android UI 回归。
+- 增加 [0.7.1 升级说明](MIGRATION_0.7.1.md) 与 [验证记录](UPGRADE_VERIFICATION.md)；开发服务器仅监听本机，并只提供编译资源。
+
 ## 0.7.0 - 2026-08-10
 
 ### Changed

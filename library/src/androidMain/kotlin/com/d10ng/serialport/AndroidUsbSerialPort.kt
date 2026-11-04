@@ -79,52 +79,59 @@ class AndroidUsbSerialPort(
             }
             ensurePermission(driver)
 
-            withContext(Dispatchers.IO) {
-                var connection: UsbDeviceConnection? = null
-                var openedPort: UsbSerialPort? = null
-                runCatching {
-                    val openedConnection = usbManager.openDevice(driver.device)
-                        ?: throw IllegalStateException(
-                            "Serial port [${info.id}] could not open USB device [$deviceName]"
+            var openingAttempt = false
+            try {
+                withContext(Dispatchers.IO) {
+                    openingAttempt = true
+                    var connection: UsbDeviceConnection? = null
+                    var openedPort: UsbSerialPort? = null
+                    runCatching {
+                        val openedConnection = usbManager.openDevice(driver.device)
+                            ?: throw IllegalStateException(
+                                "Serial port [${info.id}] could not open USB device [$deviceName]"
+                            )
+                        connection = openedConnection
+                        val port = handle.selectedPort().also { openedPort = it }
+                        port.open(openedConnection)
+                        port.setParameters(
+                            config.baudRate.intValue,
+                            config.dataBits.intValue,
+                            config.stopBits.intValue,
+                            config.parity.intValue
                         )
-                    connection = openedConnection
-                    val port = handle.selectedPort().also { openedPort = it }
-                    port.open(openedConnection)
-                    port.setParameters(
-                        config.baudRate.intValue,
-                        config.dataBits.intValue,
-                        config.stopBits.intValue,
-                        config.parity.intValue
-                    )
-                    val installed = synchronized(stateLock) {
-                        if (generation == token && sp == null) {
-                            sp = port
-                            deviceConnection = openedConnection
-                            true
-                        } else {
-                            false
+                        val installed = synchronized(stateLock) {
+                            if (generation == token && sp == null) {
+                                sp = port
+                                deviceConnection = openedConnection
+                                true
+                            } else {
+                                false
+                            }
                         }
-                    }
-                    check(installed) { "Serial port [${info.id}] was closed while opening" }
-                    startDetachListener(deviceName, port, token)
-                    startRead(deviceName, port, token)
-                    logger.i { "[serial.open.ok] ${info.id}" }
-                }.onFailure { exception ->
-                    logger.w { "[serial.open.fail] ${info.id} error=${exception.serialContext()}" }
-                    synchronized(stateLock) {
-                        if (generation == token) generation += 1
-                        if (sp === openedPort) {
-                            sp = null
-                            deviceConnection = null
-                            readJob = null
-                            detachJob = null
+                        check(installed) { "Serial port [${info.id}] was closed while opening" }
+                        startDetachListener(deviceName, port, token)
+                        startRead(deviceName, port, token)
+                        logger.i { "[serial.open.ok] ${info.id}" }
+                    }.onFailure { exception ->
+                        logger.w { "[serial.open.fail] ${info.id} error=${exception.serialContext()}" }
+                        synchronized(stateLock) {
+                            if (generation == token) generation += 1
+                            if (sp === openedPort) {
+                                sp = null
+                                deviceConnection = null
+                                readJob = null
+                                detachJob = null
+                            }
                         }
+                        runCatching { openedPort?.close() }
+                        runCatching { connection?.close() }
+                        openStateFlow.value = false
+                        throw exception
                     }
-                    runCatching { openedPort?.close() }
-                    runCatching { connection?.close() }
-                    openStateFlow.value = false
-                    throw exception
                 }
+            } catch (exception: Throwable) {
+                if (openingAttempt) close()
+                throw exception
             }
         }
     }

@@ -7,6 +7,7 @@ plugins {
 }
 
 android {
+    sourceSets["main"].java.srcDir("../demoShared/src/commonMain/kotlin")
     namespace = "com.d10ng.serialport.demo"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 

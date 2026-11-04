@@ -38,7 +38,7 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Build JS distribution
-        run: ./gradlew :jsDemo:jsBrowserDistribution -Pbds100MavenUsername="${{ secrets.BDS100MAVENUSERNAME }}" -Pbds100MavenPassword="${{ secrets.BDS100MAVENPASSWORD }}"
+        run: ./gradlew :jsDemo:jsBrowserDistribution
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

@@ -5,6 +5,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -30,6 +34,7 @@ class WebSerialPort(
     
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val writeMutex = Mutex()
+    private val lifecycleMutex = Mutex()
     private var sp: dynamic = null
     private var reader: dynamic = null
     private var writer: dynamic = null
@@ -49,58 +54,50 @@ class WebSerialPort(
         }
     
     override suspend fun open() {
-        closeJob?.let { pendingClose ->
+        closeJob?.let { pending ->
+            try { pending.await() } finally { if (closeJob === pending) closeJob = null }
+        }
+        lifecycleMutex.withLock {
+            if (sp != null) return@withLock
+            val port = info.obj?.asDynamic() ?: error("Serial port object is null")
+            var opened = false
             try {
-                pendingClose.await()
-            } finally {
-                if (closeJob === pendingClose) closeJob = null
-            }
-        }
-        if (sp != null) {
-            logger.w { "Serial port [${info.id}] already opened" }
-            return
-        }
-        
-        runCatching {
-            logger.i { "[serial.open] ${info.id} ${serialConfigFields(config)}" }
-            // 获取串口对象
-            sp = info.obj ?: throw Exception("Serial port object is null")
-            
-            // 配置串口参数
-            val options = js("{}")
-            options.baudRate = config.baudRate.intValue
-            options.dataBits = config.dataBits.intValue
-            options.stopBits = config.stopBits.intValue
-            options.parity = config.parity.text
-            
-            // 打开串口
-            val openPromise = sp.open(options) as Promise<Unit>
-            openPromise.await()
-
-            reader = sp.readable.getReader()
-            writer = sp.writable.getWriter()
-            
-            // 开始读取数据
-            startRead()
-            
-            openStateFlow.value = true
-            logger.i { "[serial.open.ok] ${info.id}" }
-        }.onFailure { exception ->
-            logger.w { "[serial.open.fail] ${info.id} error=${exception.serialContext()}" }
-            runCatching { closeAndAwait() }
-                .onFailure { closeError ->
-                    logger.w { "cleanup serial port [${info.id}] after open failure: ${closeError.message}" }
+                logger.i { "[serial.open] ${info.id} ${serialConfigFields(config)}" }
+                // Browser promises cannot be cancelled: retain ownership until open settles.
+                withContext(NonCancellable) {
+                    val options = js("{}")
+                    options.baudRate = config.baudRate.intValue
+                    options.dataBits = config.dataBits.intValue
+                    options.stopBits = config.stopBits.intValue
+                    options.parity = config.parity.text
+                    (port.open(options) as Promise<dynamic>).await()
+                    opened = true
                 }
-            closeJob = null
-            throw exception
+                currentCoroutineContext().ensureActive()
+                check(closeJob == null) { "Serial port was closed while opening" }
+                sp = port
+                reader = port.readable!!.getReader()
+                writer = port.writable!!.getWriter()
+                openStateFlow.value = true
+                startRead()
+                logger.i { "[serial.open.ok] ${info.id}" }
+            } catch (exception: Throwable) {
+                if (opened) withContext(NonCancellable) {
+                    runCatching {
+                        if (sp === port) closeInternal("open-failed") else (port.close() as Promise<dynamic>).await()
+                    }.onFailure { logger.w { "cleanup after open failure: ${it.message}" } }
+                }
+                throw exception
+            }
         }
     }
 
     private fun startRead() {
+        val port = sp ?: return
         readJob = scope.launch {
             var disconnectReason: String? = null
             logger.i { "[serial.read.start] ${info.id}" }
-            loop@ while (isActive && sp != null) {
+            loop@ while (isActive && sp === port && closeJob == null) {
                 try {
                     val result = (reader!!.read() as Promise<dynamic>).await()
                     if (result.done) {
@@ -123,7 +120,16 @@ class WebSerialPort(
                         disconnectReason = if (sp?.connected == false) "web-serial-connected=false" else exception.serialContext()
                         break@loop
                     }
-                    logger.w { "[serial.read.fail] ${info.id} action=retry error=${exception.serialContext()}" }
+                    if (closeJob != null) break@loop
+                    logger.w { "[serial.read.fail] ${info.id} action=replace-reader error=${exception.serialContext()}" }
+                    runCatching { reader?.releaseLock() }
+                    reader = null
+                    val readable = port.readable
+                    if (readable == null) {
+                        disconnectReason = "readable-stream-unavailable"
+                        break@loop
+                    }
+                    reader = readable.getReader()
                     delay(50)
                 }
             }
@@ -138,7 +144,7 @@ class WebSerialPort(
     override suspend fun write(data: ByteArray): Boolean = withWriteOperation(data.size) { operationId ->
         writeMutex.withLock {
             val currentWriter = writer
-            if (currentWriter == null) {
+            if (currentWriter == null || closeJob != null) {
                 logger.w { "[serial.write.fail] ${info.id} op=$operationId reason=not-open" }
                 return@withLock false
             }
@@ -196,7 +202,7 @@ class WebSerialPort(
         closeJob?.let { return it }
         openStateFlow.value = false
         return scope.async(start = CoroutineStart.LAZY) {
-            closeInternal(reason)
+            lifecycleMutex.withLock { closeInternal(reason) }
         }.also { job ->
             closeJob = job
             job.invokeOnCompletion { error ->

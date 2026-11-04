@@ -62,6 +62,11 @@ import platform.posix.close
 import platform.posix.errno
 import platform.posix.ioctl
 import platform.posix.open
+import platform.posix.poll
+import platform.posix.pollfd
+import platform.posix.POLLIN
+import platform.posix.POLLHUP
+import platform.posix.POLLERR
 import platform.posix.read
 import platform.posix.tcflush
 import platform.posix.tcgetattr
@@ -193,27 +198,47 @@ class PosixSerialPort(
             var disconnectReason: String? = null
             logger.i { "[serial.read.start] ${info.id} fd=$portFd" }
             try {
-                loop@ while (isActive && isCurrent(portFd, token)) {
-                    val bytesRead = buffer.usePinned { pinned ->
-                        read(portFd, pinned.addressOf(0), buffer.size.toULong())
-                    }.toInt()
+                loop@ while (isActive) {
+                    var readError = 0
+                    var hungUp = false
+                    // Keep fd validation and the nonblocking syscall atomic with close/reopen.
+                    val bytesRead = lifecycleMutex.withLock {
+                        if (!isCurrent(portFd, token)) return@withLock null
+                        val count = buffer.usePinned { pinned ->
+                            read(portFd, pinned.addressOf(0), buffer.size.toULong())
+                        }.toInt()
+                        readError = errno
+                        if (count == 0) memScoped {
+                            val event = alloc<pollfd>()
+                            event.fd = portFd
+                            event.events = POLLIN.toShort()
+                            event.revents = 0
+                            hungUp = poll(event.ptr, 1u, 0) > 0 &&
+                                (event.revents.toInt() and (POLLHUP or POLLERR)) != 0
+                        }
+                        count
+                    } ?: break@loop
                     when {
                         bytesRead > 0 -> {
                             val data = buffer.copyOf(bytesRead)
                             emitReceived(data)
                         }
-                        bytesRead == 0 -> continue@loop
-                        errno == EINTR -> continue@loop
-                        errno == EAGAIN || errno == EWOULDBLOCK -> {
+                        bytesRead == 0 && hungUp -> {
+                            disconnectReason = "poll-hangup"
+                            break@loop
+                        }
+                        bytesRead == 0 -> delay(1)
+                        readError == EINTR -> continue@loop
+                        readError == EAGAIN || readError == EWOULDBLOCK -> {
                             delay(1)
                             continue@loop
                         }
-                        errno == EBADF || errno == ENODEV || errno == EIO -> {
-                            disconnectReason = "errno=$errno"
+                        readError == EBADF || readError == ENODEV || readError == EIO -> {
+                            disconnectReason = "errno=$readError"
                             break@loop
                         }
                         else -> {
-                            logger.w { "[serial.read.fail] ${info.id} fd=$portFd errno=$errno action=retry" }
+                            logger.w { "[serial.read.fail] ${info.id} fd=$portFd errno=$readError action=retry" }
                             delay(50)
                         }
                     }

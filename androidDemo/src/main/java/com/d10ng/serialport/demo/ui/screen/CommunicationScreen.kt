@@ -54,7 +54,7 @@ fun CommunicationScreen(
     }
     
     // 自动滚动到最新消息
-    LaunchedEffect(messages.size) {
+    LaunchedEffect(messages.lastOrNull()) {
         if (messages.isNotEmpty()) {
             coroutineScope.launch {
                 listState.animateScrollToItem(messages.size - 1)
@@ -107,8 +107,10 @@ fun CommunicationScreen(
                         keyboardActions = KeyboardActions(
                             onSend = {
                                 if (inputText.isNotBlank() && isConnected) {
-                                    viewModel.sendData(inputText)
-                                    inputText = ""
+                                    val submitted = inputText
+                                    viewModel.sendData(submitted) {
+                                        if (inputText == submitted) inputText = ""
+                                    }
                                     keyboardController?.hide()
                                 }
                             }
@@ -121,8 +123,10 @@ fun CommunicationScreen(
                     FloatingActionButton(
                         onClick = {
                             if (inputText.isNotBlank() && isConnected) {
-                                viewModel.sendData(inputText)
-                                inputText = ""
+                                val submitted = inputText
+                                viewModel.sendData(submitted) {
+                                    if (inputText == submitted) inputText = ""
+                                }
                                 keyboardController?.hide()
                             }
                         },

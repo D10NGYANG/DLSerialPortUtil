@@ -23,6 +23,7 @@ kotlin {
     }
     
     sourceSets {
+        commonMain { kotlin.srcDir("../demoShared/src/commonMain/kotlin") }
         commonMain.dependencies {
             implementation(compose.runtime)
             implementation(compose.foundation)

@@ -44,60 +44,67 @@ class AndroidSerialPort(
 
     override suspend fun open() {
         lifecycleMutex.withLock {
-            withContext(Dispatchers.IO) {
-                val token = synchronized(stateLock) {
-                    if (sp != null) return@synchronized null
-                    generation += 1
-                    generation
-                }
-                if (token == null) {
-                    logger.w { "Serial port [${info.id}] already opened" }
-                    return@withContext
-                }
-
-                val file = resolveDeviceFile(info.id)
-                if (!file.canRead() || !file.canWrite()) {
-                    logger.w { "[serial.open.fail] ${info.id} reason=permission-denied" }
-                    throw SecurityException(
-                        "Serial port [${file.absolutePath}] is not readable and writable; " +
-                            "grant device-file access in the application or system configuration"
-                    )
-                }
-
-                var openedPort: SerialPort? = null
-                runCatching {
-                    logger.i { "[serial.open] ${info.id} ${serialConfigFields(config)}" }
-                    val port = SerialPort(
-                        file,
-                        config.baudRate.intValue,
-                        config.dataBits.intValue,
-                        config.parity.intValue,
-                        config.stopBits.intValue
-                    ).also { openedPort = it }
-                    val installed = synchronized(stateLock) {
-                        if (generation == token && sp == null) {
-                            sp = port
-                            true
-                        } else {
-                            false
-                        }
+            var openingAttempt = false
+            try {
+                withContext(Dispatchers.IO) {
+                    val token = synchronized(stateLock) {
+                        if (sp != null) return@synchronized null
+                        generation += 1
+                        generation
                     }
-                    check(installed) { "Serial port [${info.id}] was closed while opening" }
-                    startRead(port, token)
-                    logger.i { "[serial.open.ok] ${info.id}" }
-                }.onFailure { exception ->
-                    logger.w { "[serial.open.fail] ${info.id} error=${exception.serialContext()}" }
-                    synchronized(stateLock) {
-                        if (generation == token) generation += 1
-                        if (sp === openedPort) {
-                            sp = null
-                            readJob = null
-                        }
+                    if (token == null) {
+                        logger.w { "Serial port [${info.id}] already opened" }
+                        return@withContext
                     }
-                    runCatching { openedPort?.tryClose() }
-                    openStateFlow.value = false
-                    throw exception
+
+                    val file = resolveDeviceFile(info.id)
+                    if (!file.canRead() || !file.canWrite()) {
+                        logger.w { "[serial.open.fail] ${info.id} reason=permission-denied" }
+                        throw SecurityException(
+                            "Serial port [${file.absolutePath}] is not readable and writable; " +
+                                "grant device-file access in the application or system configuration"
+                        )
+                    }
+
+                    openingAttempt = true
+                    var openedPort: SerialPort? = null
+                    runCatching {
+                        logger.i { "[serial.open] ${info.id} ${serialConfigFields(config)}" }
+                        val port = SerialPort(
+                            file,
+                            config.baudRate.intValue,
+                            config.dataBits.intValue,
+                            config.parity.intValue,
+                            config.stopBits.intValue
+                        ).also { openedPort = it }
+                        val installed = synchronized(stateLock) {
+                            if (generation == token && sp == null) {
+                                sp = port
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        check(installed) { "Serial port [${info.id}] was closed while opening" }
+                        startRead(port, token)
+                        logger.i { "[serial.open.ok] ${info.id}" }
+                    }.onFailure { exception ->
+                        logger.w { "[serial.open.fail] ${info.id} error=${exception.serialContext()}" }
+                        synchronized(stateLock) {
+                            if (generation == token) generation += 1
+                            if (sp === openedPort) {
+                                sp = null
+                                readJob = null
+                            }
+                        }
+                        runCatching { openedPort?.tryClose() }
+                        openStateFlow.value = false
+                        throw exception
+                    }
                 }
+            } catch (exception: Throwable) {
+                if (openingAttempt) close()
+                throw exception
             }
         }
     }
